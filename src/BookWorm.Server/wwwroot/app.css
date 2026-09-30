@@ -1,0 +1,64 @@
+/* Shared by the app and the server-rendered account pages. */
+
+:root {
+    color-scheme: light;
+    --bw-boot-background: #f7f1e6;
+    --bw-boot-text: #5b4636;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bw-boot-background: #1e1814;
+    --bw-boot-text: #d9c7b0;
+}
+
+/* Shown while the WebAssembly app downloads. */
+.bw-boot {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    font-size: 1.25rem;
+    color: var(--bw-boot-text);
+    background: var(--bw-boot-background);
+    z-index: 2000;
+}
+
+/* The boot screen disappears as soon as the app's layout has rendered. */
+body:has(.bw-app) .bw-boot {
+    display: none;
+}
+
+#blazor-error-ui {
+    color-scheme: light only;
+    background: #fff4d6;
+    color: #3b2f25;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 2001;
+}
+
+    #blazor-error-ui .dismiss {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+    }
+
+.blazor-error-boundary {
+    background: #b3261e;
+    padding: 1rem;
+    color: white;
+}
+
+    .blazor-error-boundary::after {
+        content: "Something went wrong here.";
+    }

@@ -1,0 +1,25 @@
+@inherits LayoutComponentBase
+
+@* Layout for the server-rendered pages: first-run setup, login and account settings. *@
+
+<header class="account-header">
+    <a class="account-brand" href=""><img src="favicon.svg" alt="" />BookWorm</a>
+    <AuthorizeView>
+        <Authorized>
+            <nav class="account-nav">
+                <a href="">My library</a>
+                <form action="Account/Logout" method="post">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="ReturnUrl" value="Account/Login" />
+                    <button type="submit" class="btn btn-link p-0">Log out</button>
+                </form>
+            </nav>
+        </Authorized>
+    </AuthorizeView>
+</header>
+
+<main class="account-main">
+    <div class="account-card">
+        @Body
+    </div>
+</main>

@@ -1,0 +1,48 @@
+# BookWorm: copy .env.example to .env, set a database password, then run `docker compose up -d`.
+name: bookworm
+
+services:
+  app:
+    image: bookworm:local
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Kerberos (GSS) isn't used, and turning it off avoids a harmless "libgssapi" error at startup.
+      ConnectionStrings__Database: "Host=db;Port=5432;Database=bookworm;Username=bookworm;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};GSS Encryption Mode=Disable"
+      # Uncomment when BookWorm runs behind a reverse proxy (Caddy, Traefik, nginx…) that handles HTTPS.
+      # ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # The largest book file that can be uploaded, in MB (default 500).
+      # Storage__MaxUploadMegabytes: "500"
+    ports:
+      - "${BOOKWORM_PORT:-8080}:8080"
+    volumes:
+      # Book files, covers, and your notes exported as Markdown (in /data/notes).
+      - app-data:/data
+      # Backups. To keep them in a folder of this machine instead (e.g. one synced to a NAS), use
+      # a path like ./backups:/backups and make it writable for the app: sudo chown 1654 ./backups
+      - backups:/backups
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bookworm
+      POSTGRES_USER: bookworm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      # PostgreSQL 18+ images keep their data under /var/lib/postgresql/<major version>.
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      # Over TCP: during first-time initialization PostgreSQL only listens on its local socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U bookworm -d bookworm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  db-data:
+  app-data:
+  backups:

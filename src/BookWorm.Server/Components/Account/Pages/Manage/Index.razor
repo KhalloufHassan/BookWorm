@@ -1,0 +1,98 @@
+@page "/Account/Manage"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using BookWorm.Contracts
+@using BookWorm.Server.Data
+
+@inject UserManager<AppUser> UserManager
+@inject SignInManager<AppUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Profile</PageTitle>
+
+<h3>Profile</h3>
+<StatusMessage />
+
+<div class="row">
+    <div class="col-xl-6">
+        <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+            <div class="form-floating mb-3">
+                <input type="text" value="@username" id="username" class="form-control" placeholder="Username" disabled />
+                <label for="username" class="form-label">Username</label>
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="email" placeholder="Email (optional)" />
+                <label for="Input.Email" class="form-label">Email (optional)</label>
+                <ValidationMessage For="() => Input.Email" class="text-danger" />
+            </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Save</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private AppUser user;
+    private string username;
+    private string email;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+
+        user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        username = await UserManager.GetUserNameAsync(user);
+        email = await UserManager.GetEmailAsync(user);
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            Input.Email = email;
+        }
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        var newEmail = string.IsNullOrWhiteSpace(Input.Email) ? null : Input.Email.Trim();
+        if (newEmail != email)
+        {
+            // No mail server is involved, so the address is saved as-is without a confirmation email.
+            var setEmailResult = await UserManager.SetEmailAsync(user, newEmail);
+            if (!setEmailResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to save the email address.", HttpContext);
+                return;
+            }
+        }
+
+        await SignInManager.RefreshSignInAsync(user);
+        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [OptionalEmail]
+        [StringLength(ApiLimits.EmailMaxLength)]
+        [Display(Name = "Email")]
+        public string Email { get; set; }
+    }
+}

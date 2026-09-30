@@ -1,0 +1,162 @@
+@page "/setup"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using BookWorm.Server.Backups
+@using BookWorm.Server.Data
+@using BookWorm.Server.Setup
+
+@inject SetupState SetupState
+@inject UserManager<AppUser> UserManager
+@inject SignInManager<AppUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<Setup> Logger
+@inject BackupService Backups
+
+<PageTitle>Welcome to BookWorm</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-5">
+        <h1 class="h3">Welcome to BookWorm</h1>
+        <p class="text-secondary">
+            Let's create the administrator account. Afterwards you can add accounts for other people;
+            everyone gets their own private library.
+        </p>
+        <StatusMessage Message="@errorMessage" />
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAdminAsync" FormName="setup">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.UserName" id="Input.UserName" class="form-control" autocomplete="username" aria-required="true" placeholder="Username" />
+                <label for="Input.UserName" class="form-label">Username</label>
+                <ValidationMessage For="() => Input.UserName" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="email" placeholder="Email (optional)" />
+                <label for="Input.Email" class="form-label">Email (optional)</label>
+                <ValidationMessage For="() => Input.Email" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="Password" />
+                <label for="Input.Password" class="form-label">Password (at least @ApiLimits.PasswordMinLength characters)</label>
+                <ValidationMessage For="() => Input.Password" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.ConfirmPassword" id="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="Confirm password" />
+                <label for="Input.ConfirmPassword" class="form-label">Confirm password</label>
+                <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+            </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Create account</button>
+        </EditForm>
+
+        <hr />
+
+        <section class="setup-restore" id="setup-restore">
+            <h2 class="h3">Moving from another server?</h2>
+            <p class="text-secondary">
+                Restore a BookWorm backup instead of starting fresh: all accounts, libraries, book files and covers come back.
+                Sign in with your old account afterwards.
+            </p>
+            @if (_lastRestore is { Succeeded: false } failed)
+            {
+                <div class="alert alert-danger" role="alert"><p>The last restore failed: @failed.Message</p></div>
+            }
+            @if (_backups.Count > 0)
+            {
+                <p class="small text-secondary">Backups found in <code>@Backups.Folder</code>:</p>
+                <ul class="setup-backups">
+                    @foreach (var backup in _backups)
+                    {
+                        <li>
+                            <span><code>@backup.Name</code> <span class="text-secondary small">(@FileSizes.Describe(backup.SizeBytes))</span></span>
+                            <button type="button" class="btn btn-danger" data-restore="@backup.Name">Restore</button>
+                        </li>
+                    }
+                </ul>
+            }
+            <div class="setup-upload">
+                <label class="form-label" for="restore-file">Upload a backup (<code>bookworm-backup-….tar.gz</code>)</label>
+                <input type="file" id="restore-file" accept=".gz,.tgz,application/gzip" class="form-control" />
+                <button type="button" class="btn btn-danger mt-3" id="restore-upload" disabled>Upload and restore</button>
+                <p class="small text-secondary mt-3">
+                    Very large backups are quicker to copy into <code>@Backups.Folder</code> on the server directly; they then appear above.
+                </p>
+            </div>
+            <div class="alert alert-info" id="restore-status" role="status" hidden></div>
+        </section>
+    </div>
+</div>
+
+<script src="js/setup-restore.js"></script>
+
+@code {
+    private string errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; }
+
+    private IReadOnlyList<BackupFile> _backups = [];
+    private BackupRunResult _lastRestore;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+
+        if (!await SetupState.IsSetupRequiredAsync(HttpContext.RequestAborted))
+        {
+            RedirectManager.RedirectTo("Account/Login");
+            return;
+        }
+
+        _backups = Backups.List();
+        _lastRestore = await Backups.ReadRestoreStatusAsync(HttpContext.RequestAborted);
+    }
+
+    private async Task CreateAdminAsync()
+    {
+        var result = await SetupState.CreateFirstAdminAsync(
+            UserManager, Input.UserName, Input.Email, Input.Password, HttpContext.RequestAborted);
+
+        if (result.IsAlreadyCompleted)
+        {
+            RedirectManager.RedirectTo("Account/Login");
+            return;
+        }
+
+        if (result.User is null)
+        {
+            errorMessage = $"Error: {string.Join(" ", result.Errors)}";
+            return;
+        }
+
+        Logger.LogInformation("Created the first administrator account '{UserName}'.", result.User.UserName);
+        await SignInManager.SignInAsync(result.User, isPersistent: false);
+        RedirectManager.RedirectTo("");
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [StringLength(ApiLimits.UserNameMaxLength)]
+        [Display(Name = "Username")]
+        public string UserName { get; set; } = "";
+
+        [OptionalEmail]
+        [StringLength(ApiLimits.EmailMaxLength)]
+        [Display(Name = "Email")]
+        public string Email { get; set; }
+
+        [Required]
+        [StringLength(ApiLimits.PasswordMaxLength, MinimumLength = ApiLimits.PasswordMinLength)]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+
+        [DataType(DataType.Password)]
+        [Display(Name = "Confirm password")]
+        [Compare(nameof(Password), ErrorMessage = "The passwords don't match.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

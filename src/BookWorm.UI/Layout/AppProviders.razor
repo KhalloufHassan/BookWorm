@@ -1,0 +1,27 @@
+@* MudBlazor's providers and the app theme, for every layout. *@
+@implements IDisposable
+@inject ThemeState Theme
+
+<MudThemeProvider @ref="_provider" Theme="_theme" IsDarkMode="Theme.ShowsDark" />
+<MudPopoverProvider />
+<MudDialogProvider CloseOnEscapeKey="true" BackdropClick="true" />
+<MudSnackbarProvider />
+
+@code {
+    private readonly MudTheme _theme = BookWormTheme.Create();
+    private MudThemeProvider _provider;
+
+    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _provider is not null)
+        {
+            await Theme.AttachAsync(_provider);
+        }
+    }
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

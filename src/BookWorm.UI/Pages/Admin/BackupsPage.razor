@@ -1,0 +1,437 @@
+@page "/admin/backups"
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@implements IDisposable
+@inject BookWormApiClient Api
+@inject BrowserFiles Files
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Backups · BookWorm</PageTitle>
+
+<PageHeader Title="Backups" Subtitle="Backups hold everyone's data: the database, the book files and the covers.">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Backup" OnClick="BackUpNowAsync"
+               Disabled="@(_overview is null || _overview.IsRunning || _overview.ToolsProblem is not null)">
+        @(_overview?.IsRunning == true ? "Backing up…" : "Back up now")
+    </MudButton>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_restoring)
+{
+    <div class="bw-restoring" role="status">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5">Restoring the backup…</MudText>
+        <MudText>BookWorm is restarting to restore it. This page reloads when it's back, and you'll need to sign in again.</MudText>
+        @if (_restoreWaitedLong)
+        {
+            <MudText Color="Color.Secondary">
+                Taking a while? Large libraries take longer. If BookWorm doesn't come back by itself (for example when it isn't
+                run with Docker Compose), start it again: the restore runs as it starts.
+            </MudText>
+        }
+    </div>
+}
+else if (_overview is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+}
+else
+{
+    @if (_overview.ToolsProblem is { } problem)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">Backups can't run here: @problem</MudAlert>
+    }
+
+    <div class="bw-backup-grid">
+        <MudPaper Elevation="0" Class="bw-section">
+            <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">Status</MudText>
+            @if (_overview.IsRunning)
+            {
+                <div class="bw-backup-status">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" />
+                    <span>A backup is running…</span>
+                </div>
+            }
+            else if (_overview.LastRun is { } last)
+            {
+                <div class="bw-backup-status">
+                    <MudIcon Icon="@(last.Succeeded ? Icons.Material.Rounded.CheckCircle : Icons.Material.Rounded.Error)" Color="@(last.Succeeded ? Color.Success : Color.Error)" />
+                    <div>
+                        <div>@(last.Succeeded ? "Last backup succeeded" : "Last backup failed") · @Labels.DateTime(last.FinishedAt ?? last.StartedAt)</div>
+                        @if (last.Message is { } message)
+                        {
+                            <div class="bw-muted">@message</div>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <MudText Color="Color.Secondary">No backup has been made yet.</MudText>
+            }
+
+            <MudText Class="mt-3">
+                @if (_overview.NextRunAt is { } next)
+                {
+                    <span>Next scheduled backup: <strong>@Labels.DateTime(next)</strong></span>
+                }
+                else
+                {
+                    <span>Scheduled backups are off.</span>
+                }
+            </MudText>
+
+            @if (_overview.LastRestore is { } restore)
+            {
+                <div class="bw-backup-status mt-3">
+                    <MudIcon Icon="@Icons.Material.Rounded.SettingsBackupRestore" Color="@(restore.Succeeded ? Color.Success : Color.Error)" />
+                    <div>
+                        <div>@(restore.Succeeded ? "Last restore succeeded" : "Last restore failed") · @Labels.DateTime(restore.FinishedAt ?? restore.StartedAt)</div>
+                        <div class="bw-muted">@restore.Message</div>
+                    </div>
+                </div>
+            }
+
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-4">
+                Backups are stored in <code>@_overview.Folder</code> on the server. Keep copies somewhere else too, for example
+                by mapping that folder to a NAS or a synced drive (see the README).
+            </MudText>
+        </MudPaper>
+
+        <MudPaper Elevation="0" Class="bw-section">
+            <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">Schedule</MudText>
+            <div class="bw-dialog-fields">
+                <MudSwitch T="bool" @bind-Value="_form.Enabled" Color="Color.Primary" Label="Back up automatically" />
+                @if (_form.Enabled)
+                {
+                    <MudToggleGroup T="BackupFrequency" @bind-Value="_form.Frequency" SelectionMode="SelectionMode.SingleSelection" Size="Size.Small" Outlined="true" CheckMark="false">
+                        <MudToggleItem Value="BackupFrequency.Daily" Text="Every day" />
+                        <MudToggleItem Value="BackupFrequency.Weekly" Text="Every week" />
+                    </MudToggleGroup>
+                    @if (_form.Frequency == BackupFrequency.Weekly)
+                    {
+                        <MudSelect T="DayOfWeek" @bind-Value="_form.DayOfWeek" Label="Day" Variant="Variant.Outlined" Margin="Margin.Dense">
+                            @foreach (var day in Days)
+                            {
+                                <MudSelectItem Value="day">@day</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    <MudTimePicker Label="At" @bind-Time="_time" Variant="Variant.Outlined" Margin="Margin.Dense" Editable="true" AmPm="false" />
+                    <MudAutocomplete T="string" Label="Time zone" @bind-Value="_form.TimeZone" SearchFunc="SearchTimeZonesAsync" Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" CoerceText="false" CoerceValue="true" MaxItems="50" />
+                }
+                <MudNumericField T="int" Label="Backups to keep" @bind-Value="_form.KeepCount" Min="1" Max="365" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 HelperText="Older backups made by BookWorm are deleted. Uploaded ones are kept until you delete them." />
+            </div>
+            <div class="bw-form__actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveScheduleAsync" Disabled="_saving">Save schedule</MudButton>
+            </div>
+        </MudPaper>
+    </div>
+
+    <MudPaper Elevation="0" Class="bw-section mt-4">
+        <div class="bw-section__header">
+            <MudText Typo="Typo.h6" HtmlTag="h2">Backups on the server</MudText>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="UploadAsync" Disabled="@(_uploadProgress is not null)">
+                Upload a backup
+            </MudButton>
+        </div>
+        @if (_uploadProgress is { } progress)
+        {
+            <div class="bw-upload">
+                <MudText Typo="Typo.body2">Uploading… @Labels.Percent(progress)</MudText>
+                <MudProgressLinear Value="@(progress * 100)" Color="Color.Primary" Rounded="true" />
+            </div>
+        }
+        @if (_overview.Backups.Count == 0)
+        {
+            <MudText Color="Color.Secondary">None yet.</MudText>
+        }
+        else
+        {
+            <MudTable T="BackupFile" Items="_overview.Backups" Elevation="0" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true">
+                <HeaderContent>
+                    <MudTh>Made</MudTh>
+                    <MudTh>Size</MudTh>
+                    <MudTh>File</MudTh>
+                    <MudTh Style="width: 1%"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Made">
+                        @Labels.DateTime(context.CreatedAt)
+                        @if (context.Kind == BackupKind.Uploaded)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">uploaded</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Size">@FileSizes.Describe(context.SizeBytes)</MudTd>
+                    <MudTd DataLabel="File"><code class="bw-file-name">@context.Name</code></MudTd>
+                    <MudTd>
+                        <div class="bw-row-actions">
+                            <MudIconButton Href="@BookWormApiClient.BackupUrl(context.Name)" Icon="@Icons.Material.Rounded.Download" Size="Size.Small" aria-label="Download" />
+                            <MudIconButton Icon="@Icons.Material.Rounded.SettingsBackupRestore" Size="Size.Small" aria-label="Restore" OnClick="@(() => RestoreAsync(context))" />
+                            <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="Delete" OnClick="@(() => DeleteAsync(context))" />
+                        </div>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    private static readonly DayOfWeek[] Days =
+        [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday];
+
+    private BackupOverview _overview;
+    private UpdateBackupSettingsRequest _form = new();
+    private TimeSpan? _time;
+    private string _error;
+    private bool _saving;
+    private double? _uploadProgress;
+    private bool _restoring;
+    private bool _restoreWaitedLong;
+    private CancellationTokenSource _polling;
+    private readonly CancellationTokenSource _disposed = new();
+
+    protected override Task OnInitializedAsync() => LoadAsync(resetForm: true);
+
+    private async Task LoadAsync(bool resetForm)
+    {
+        try
+        {
+            _overview = await Api.GetBackupsAsync();
+            _error = null;
+            if (resetForm)
+            {
+                var settings = _overview.Settings;
+                _form = new UpdateBackupSettingsRequest
+                {
+                    Enabled = settings.Enabled,
+                    Frequency = settings.Frequency,
+                    DayOfWeek = settings.DayOfWeek,
+                    TimeOfDay = settings.TimeOfDay,
+                    TimeZone = settings.TimeZone,
+                    KeepCount = settings.KeepCount,
+                };
+                _time = settings.TimeOfDay.ToTimeSpan();
+            }
+
+            if (_overview.IsRunning)
+            {
+                PollWhileRunning();
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private async Task BackUpNowAsync()
+    {
+        try
+        {
+            _overview = await Api.StartBackupAsync();
+            PollWhileRunning();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+
+    private void PollWhileRunning()
+    {
+        if (_polling is not null)
+        {
+            return;
+        }
+
+        _polling = CancellationTokenSource.CreateLinkedTokenSource(_disposed.Token);
+        var token = _polling.Token;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                while (!token.IsCancellationRequested && _overview?.IsRunning == true)
+                {
+                    await Task.Delay(1500, token);
+                    _overview = await Api.GetBackupsAsync(token);
+                    StateHasChanged();
+                }
+
+                if (_overview?.LastRun is { } last)
+                {
+                    Snackbar.Add(last.Succeeded ? $"Backup finished. {last.Message}" : last.Message ?? "The backup failed.", last.Succeeded ? Severity.Success : Severity.Error);
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or ApiException or HttpRequestException)
+            {
+                // Stopped polling; the page shows the last known state.
+            }
+            finally
+            {
+                _polling = null;
+            }
+        });
+    }
+
+    private async Task SaveScheduleAsync()
+    {
+        _saving = true;
+        try
+        {
+            if (_time is { } time)
+            {
+                _form.TimeOfDay = TimeOnly.FromTimeSpan(time);
+            }
+
+            _overview = await Api.UpdateBackupSettingsAsync(_form);
+            Snackbar.Add("Schedule saved.", Severity.Success);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private Task<IEnumerable<string>> SearchTimeZonesAsync(string text, CancellationToken cancellationToken)
+    {
+        var zones = TimeZoneInfo.GetSystemTimeZones().Select(zone => zone.Id).Append("UTC").Distinct().Order();
+        return Task.FromResult(string.IsNullOrWhiteSpace(text)
+            ? zones
+            : zones.Where(zone => zone.Contains(text.Trim(), StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private async Task UploadAsync()
+    {
+        var picked = await Files.PickAsync(".gz,.tgz,application/gzip");
+        if (picked is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _uploadProgress = 0;
+            var uploaded = await Files.UploadAsync<BackupFile>(picked.Key, BookWormApiClient.BackupUploadUrl, (loaded, total) =>
+            {
+                _uploadProgress = total > 0 ? (double)loaded / total : 0;
+                InvokeAsync(StateHasChanged);
+            });
+            Snackbar.Add("Backup uploaded. Use its restore button to restore it.", Severity.Success);
+            await LoadAsync(resetForm: false);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or Microsoft.JSInterop.JSException)
+        {
+            Snackbar.Add(ex is Microsoft.JSInterop.JSException js ? js.Message.Split('\n')[0] : ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+        finally
+        {
+            _uploadProgress = null;
+            await Files.ReleaseAsync(picked.Key);
+        }
+    }
+
+    private async Task DeleteAsync(BackupFile backup)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete this backup?", $"{backup.Name} ({FileSizes.Describe(backup.SizeBytes)}) will be deleted.",
+            yesText: "Delete", cancelText: "Keep it");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteBackupAsync(backup.Name);
+            await LoadAsync(resetForm: false);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+
+    private async Task RestoreAsync(BackupFile backup)
+    {
+        var dialog = await Dialogs.ShowAsync<RestoreBackupDialog>("Restore this backup?", new DialogParameters<RestoreBackupDialog> { { d => d.Name, backup.Name } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.RestoreBackupAsync(backup.Name);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+            return;
+        }
+
+        _restoring = true;
+        StateHasChanged();
+        await WaitForRestartAsync();
+    }
+
+    /// <summary>Waits for the server to go away and come back, then reloads the app.</summary>
+    private async Task WaitForRestartAsync()
+    {
+        var token = _disposed.Token;
+        var started = DateTimeOffset.UtcNow;
+        var wentDown = false;
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(2000, token);
+                if (DateTimeOffset.UtcNow - started > TimeSpan.FromMinutes(1) && !_restoreWaitedLong)
+                {
+                    _restoreWaitedLong = true;
+                    StateHasChanged();
+                }
+
+                try
+                {
+                    await Api.GetServerInfoAsync(token);
+                    if (wentDown || DateTimeOffset.UtcNow - started > TimeSpan.FromSeconds(20))
+                    {
+                        Navigation.NavigateTo("", forceLoad: true);
+                        return;
+                    }
+                }
+                catch (Exception ex) when (ex is HttpRequestException or ApiException)
+                {
+                    wentDown = true;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Left the page.
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed.Cancel();
+        _disposed.Dispose();
+    }
+}

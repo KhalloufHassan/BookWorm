@@ -1,0 +1,5 @@
+@inject IAccountService Account
+
+@code {
+    protected override void OnInitialized() => Account.RedirectToLogin();
+}

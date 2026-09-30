@@ -1,0 +1,12 @@
+<MudNavMenu Class="bw-nav" Rounded="true" Margin="Margin.Dense" Color="Color.Primary">
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.Home">Home</MudNavLink>
+    <MudNavLink Href="books" Icon="@Icons.Material.Rounded.AutoStories">Books</MudNavLink>
+    <MudNavLink Href="authors" Icon="@Icons.Material.Rounded.HistoryEdu">Authors</MudNavLink>
+    <MudNavLink Href="tags" Icon="@Icons.Material.Rounded.Sell">Tags</MudNavLink>
+    <AuthorizeView Roles="@RoleNames.Admin">
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.overline" Class="px-4 bw-nav-heading">Administration</MudText>
+        <MudNavLink Href="admin/users" Icon="@Icons.Material.Rounded.ManageAccounts">Users</MudNavLink>
+        <MudNavLink Href="admin/backups" Icon="@Icons.Material.Rounded.Backup">Backups</MudNavLink>
+    </AuthorizeView>
+</MudNavMenu>

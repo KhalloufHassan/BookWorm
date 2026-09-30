@@ -1,0 +1,135 @@
+@page "/authors/{Id:guid}"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject BrowseState Browse
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@(_author?.Name ?? "Author") · BookWorm</PageTitle>
+
+<MudButton Href="authors" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" Class="mb-4">Authors</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_author is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <section class="bw-author">
+        <MudAvatar Color="Color.Secondary" Class="bw-author__avatar">@Labels.Initials(_author.Name)</MudAvatar>
+        <div class="bw-author__main">
+            <MudText Typo="Typo.h3" HtmlTag="h1">@_author.Name</MudText>
+            <div class="bw-author__facts">
+                @if (_author.BirthDate is { } born)
+                {
+                    <span>Born @Labels.Date(born)</span>
+                }
+                @if (_author.DeathDate is { } died)
+                {
+                    <span>Died @Labels.Date(died)</span>
+                }
+                <span class="bw-muted">@Labels.Count(_author.Books.Count, "book") in your library</span>
+            </div>
+            <div class="bw-book__actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit" OnClick="EditAsync">Edit</MudButton>
+                <MudButton Href="@($"books/new?authorId={_author.Id}")" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add">Add a book by @FirstName</MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Rounded.DeleteOutline" OnClick="DeleteAsync">Delete</MudButton>
+            </div>
+        </div>
+    </section>
+
+    <MudText Typo="Typo.h5" HtmlTag="h2" Class="mb-3">Books</MudText>
+    @if (_author.Books.Count == 0)
+    {
+        <MudText Color="Color.Secondary">No books by @_author.Name in your library yet.</MudText>
+    }
+    else
+    {
+        <div class="bw-book-grid">
+            @foreach (var book in _author.Books)
+            {
+                <a class="bw-book-card" href="@($"books/{book.Id}")">
+                    <BookCover Id="book.Id" Title="@book.Title" Author="@_author.Name" />
+                    <div class="bw-book-card__body">
+                        <div class="bw-book-card__title">@book.Title</div>
+                        <div class="bw-book-card__meta">
+                            <StatusChip Status="book.Status" />
+                            <RatingStars Value="book.Rating" />
+                        </div>
+                    </div>
+                </a>
+            }
+        </div>
+    }
+}
+
+@code {
+    private AuthorDetails _author;
+    private string _error;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private string FirstName => _author?.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "them";
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _author = await Api.GetAuthorAsync(Id);
+            _error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private async Task EditAsync()
+    {
+        var parameters = new DialogParameters<AuthorDialog> { { d => d.Author, _author } };
+        var dialog = await Dialogs.ShowAsync<AuthorDialog>("Edit author", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+            Snackbar.Add("Saved.", Severity.Success);
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_author is null)
+        {
+            return;
+        }
+
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Delete this author?",
+            $"{_author.Name} will be removed from your library. Their books stay, without this author.",
+            yesText: "Delete", cancelText: "Keep");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteAuthorAsync(_author.Id);
+            Browse.AuthorNames.Remove(_author.Id);
+            Snackbar.Add($"Deleted {_author.Name}.", Severity.Success);
+            Navigation.NavigateTo("authors");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+}

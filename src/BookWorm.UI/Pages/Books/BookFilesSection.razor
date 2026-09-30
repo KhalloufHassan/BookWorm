@@ -1,0 +1,154 @@
+@* The book's files: upload (with progress), replace, download and delete. *@
+@inject BrowserFiles Files
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject BookWormApiClient Api
+
+<MudPaper Elevation="0" Class="bw-section">
+    <div class="bw-section__header">
+        <MudText Typo="Typo.h5" HtmlTag="h2">Files</MudText>
+        <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="@(() => UploadAsync(null))"
+                   Disabled="@(_uploading is not null)">Upload a file</MudButton>
+    </div>
+
+    @if (_uploading is not null)
+    {
+        <div class="bw-upload">
+            <MudText Typo="Typo.body2">Uploading @_uploading… @Labels.Percent(_progress)</MudText>
+            <MudProgressLinear Value="@(_progress * 100)" Color="Color.Primary" Rounded="true" Size="Size.Medium" />
+        </div>
+    }
+
+    @if (Book.Files.Count == 0)
+    {
+        <MudText Color="Color.Secondary">
+            No file yet. Upload the book as EPUB, PDF, MOBI, AZW3, FB2 or CBZ to read it here. You can keep one file per format.
+        </MudText>
+    }
+    else
+    {
+        <ul class="bw-files">
+            @foreach (var file in Book.Files.OrderBy(f => BookFormats.ReadingPreference(f.Format)))
+            {
+                <li class="bw-file">
+                    <span class="bw-file__format">@BookFormats.Label(file.Format)</span>
+                    <div class="bw-file__details">
+                        <span class="bw-file__name" title="@file.FileName">@file.FileName</span>
+                        <span class="bw-muted">@FileSizes.Describe(file.SizeBytes) · uploaded @Labels.DateTime(file.UploadedAt)</span>
+                    </div>
+                    <div class="bw-file__actions">
+                        <MudButton Href="@($"books/{Book.Id}/read?file={file.Id}")" Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Rounded.MenuBook">Read</MudButton>
+                        <MudMenu Icon="@Icons.Material.Rounded.MoreVert" Size="Size.Small" AriaLabel="@($"More for the {BookFormats.Label(file.Format)} file")"
+                                 AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                            <MudMenuItem Icon="@Icons.Material.Rounded.Download" Href="@BookWormApiClient.FileUrl(Book.Id, file.Id, download: true)">Download</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.SwapVert" OnClick="@(() => UploadAsync(file.Format))">Replace with a new version</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.DeleteOutline" OnClick="@(() => DeleteAsync(file))">Delete</MudMenuItem>
+                        </MudMenu>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</MudPaper>
+
+@code {
+    private string _uploading;
+    private double _progress;
+
+    [Parameter, EditorRequired]
+    public BookDetails Book { get; set; }
+
+    /// <summary>Called after files (or the cover) changed, so the page reloads the book.</summary>
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private async Task UploadAsync(BookFormat? format)
+    {
+        var accept = format is { } f ? string.Join(',', BookFormats.Extensions(f)) : BookFormats.AcceptAttribute;
+        var picked = await Files.PickAsync(accept);
+        if (picked is null)
+        {
+            return;
+        }
+
+        string coverKey = null;
+        try
+        {
+            if (BookFormats.FromFileName(picked.Name) is not { } detected)
+            {
+                Snackbar.Add($"“{picked.Name}” isn't a supported format. Use EPUB, PDF, MOBI, AZW3, FB2 or CBZ.", Severity.Warning);
+                return;
+            }
+
+            if (Book.Files.FirstOrDefault(file => file.Format == detected) is { } existing && format is null)
+            {
+                var replace = await Dialogs.ShowMessageBoxAsync(
+                    $"Replace the {BookFormats.Label(detected)} file?",
+                    $"“{existing.FileName}” will be replaced by “{picked.Name}”. Your highlights stay: the next time you open the book, the reader looks for them in the new version.",
+                    yesText: "Replace", cancelText: "Keep the old one");
+                if (replace != true)
+                {
+                    return;
+                }
+            }
+
+            _uploading = picked.Name;
+            _progress = 0;
+            StateHasChanged();
+
+            await Files.UploadAsync<BookFileDetails>(picked.Key, BookWormApiClient.FileUploadUrl(Book.Id, detected, picked.Name), (loaded, total) =>
+            {
+                _progress = total > 0 ? (double)loaded / total : 0;
+                InvokeAsync(StateHasChanged);
+            });
+            Snackbar.Add($"Uploaded the {BookFormats.Label(detected)} file.", Severity.Success);
+            _uploading = null;
+
+            // A book without a cover can take the one inside the file.
+            if (Book.CoverVersion is null)
+            {
+                coverKey = (await Files.ReadMetadataAsync(picked.Key, detected)).CoverKey;
+                if (coverKey is not null
+                    && await UseCoverDialog.ShowAsync(Dialogs, await Files.ObjectUrlAsync(coverKey), "This book has no cover yet. The file has this one."))
+                {
+                    await Files.UploadAsync<CoverDetails>(coverKey, BookWormApiClient.CoverUploadUrl(Book.Id));
+                }
+            }
+
+            await Changed.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or Microsoft.JSInterop.JSException)
+        {
+            Snackbar.Add(ex is Microsoft.JSInterop.JSException js ? js.Message.Split('\n')[0] : ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+        finally
+        {
+            _uploading = null;
+            await Files.ReleaseAsync(picked.Key);
+            await Files.ReleaseAsync(coverKey);
+        }
+    }
+
+    private async Task DeleteAsync(BookFileDetails file)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            $"Delete the {BookFormats.Label(file.Format)} file?",
+            $"“{file.FileName}” will be deleted. Highlights made in it are kept, and come back if you upload a file in this format again.",
+            yesText: "Delete", cancelText: "Keep it");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteFileAsync(Book.Id, file.Id);
+            Snackbar.Add("File deleted.", Severity.Success);
+            await Changed.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+}

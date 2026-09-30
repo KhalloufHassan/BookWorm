@@ -1,0 +1,124 @@
+@page "/tags"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject BrowseState Browse
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Tags · BookWorm</PageTitle>
+
+<PageHeader Title="Tags" Subtitle="@(_tags is null ? null : Labels.Count(_tags.Count, "tag"))">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="@(() => EditAsync(null))">Add tag</MudButton>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_tags is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+}
+else if (_tags.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Rounded.Sell" Title="No tags yet"
+                Text="Tags are your own labels for books, like “Favourites” or “Book club”. Add them here or while editing a book." />
+}
+else
+{
+    <MudPaper Elevation="0" Class="bw-table-wrap">
+        <MudTable T="TagSummary" Items="_tags" Hover="true" Elevation="0" Breakpoint="Breakpoint.None">
+            <HeaderContent>
+                <MudTh>Tag</MudTh>
+                <MudTh>Books</MudTh>
+                <MudTh Style="width: 1%"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudChip T="string" Color="Color.Secondary" Variant="Variant.Outlined" Icon="@Icons.Material.Rounded.Sell"
+                             OnClick="@(() => ShowBooks(context))">@context.Name</MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.BookCount > 0)
+                    {
+                        <MudLink OnClick="@(() => ShowBooks(context))">@Labels.Count(context.BookCount, "book")</MudLink>
+                    }
+                    else
+                    {
+                        <span class="bw-muted">No books</span>
+                    }
+                </MudTd>
+                <MudTd Style="white-space: nowrap">
+                    <MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" aria-label="@($"Rename {context.Name}")" OnClick="@(() => EditAsync(context))" />
+                    <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="@($"Delete {context.Name}")" OnClick="@(() => DeleteAsync(context))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<TagSummary> _tags;
+    private string _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _tags = await Api.GetTagsAsync();
+            _error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private void ShowBooks(TagSummary tag)
+    {
+        Browse.ShowBooksWithTag(tag.Id);
+        Navigation.NavigateTo("books");
+    }
+
+    private async Task EditAsync(TagSummary tag)
+    {
+        var parameters = new DialogParameters<TagDialog> { { d => d.Tag, tag } };
+        var dialog = await Dialogs.ShowAsync<TagDialog>(tag is null ? "Add a tag" : "Rename tag", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(TagSummary tag)
+    {
+        var message = tag.BookCount == 0
+            ? $"The tag “{tag.Name}” will be deleted."
+            : $"The tag “{tag.Name}” will be deleted and removed from {Labels.Count(tag.BookCount, "book")}. The books stay.";
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete this tag?", message, yesText: "Delete", cancelText: "Keep");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteTagAsync(tag.Id);
+            Snackbar.Add($"Deleted the tag “{tag.Name}”.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+}

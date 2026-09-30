@@ -1,0 +1,23 @@
+@* A table column header that sorts the list when clicked, showing the direction when active. *@
+
+<button type="button" class="bw-sort-header @(Active ? "bw-sort-header--active" : "")" @onclick="OnClick">
+    @Label
+    @if (Active)
+    {
+        <MudIcon Icon="@(Descending ? Icons.Material.Rounded.ArrowDownward : Icons.Material.Rounded.ArrowUpward)" Size="Size.Small" />
+    }
+</button>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = "";
+
+    [Parameter]
+    public bool Active { get; set; }
+
+    [Parameter]
+    public bool Descending { get; set; }
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+}

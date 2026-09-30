@@ -1,0 +1,80 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject IAccountService Account
+@inject ThemeState Theme
+
+<AppProviders />
+
+<MudLayout Class="bw-app">
+    <MudAppBar Elevation="0" Class="bw-appbar">
+        <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@(() => _drawerOpen = !_drawerOpen)" aria-label="Show or hide the menu" />
+        <a class="bw-brand" href=""><img src="favicon.svg" alt="" />BookWorm</a>
+        <MudSpacer />
+        <MudMenu Icon="@ThemeIcon" Color="Color.Inherit" AriaLabel="Theme" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+            <MudMenuItem Icon="@Icons.Material.Rounded.BrightnessAuto" OnClick="@(() => Theme.SetChoiceAsync(ThemeChoice.Device))">Match this device</MudMenuItem>
+            <MudMenuItem Icon="@Icons.Material.Rounded.LightMode" OnClick="@(() => Theme.SetChoiceAsync(ThemeChoice.Light))">Light</MudMenuItem>
+            <MudMenuItem Icon="@Icons.Material.Rounded.DarkMode" OnClick="@(() => Theme.SetChoiceAsync(ThemeChoice.Dark))">Dark</MudMenuItem>
+        </MudMenu>
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" AriaLabel="Account">
+                    <ActivatorContent Context="menu">
+                        <MudButton Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Rounded.AccountCircle"
+                                   OnClick="@(() => menu.ToggleAsync())" Class="bw-account-button">
+                            @UserName
+                        </MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Security" OnClick="Account.OpenAccountSettings">Account settings</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Logout" OnClick="Account.SignOutAsync">Log out</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </Authorized>
+        </AuthorizeView>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
+               ClipMode="DrawerClipMode.Always" Elevation="0" Class="bw-drawer">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="bw-page">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Something went wrong.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool _drawerOpen = true;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; }
+
+    private string UserName { get; set; }
+
+    private string ThemeIcon => Theme.Choice switch
+    {
+        ThemeChoice.Light => Icons.Material.Rounded.LightMode,
+        ThemeChoice.Dark => Icons.Material.Rounded.DarkMode,
+        _ => Icons.Material.Rounded.BrightnessAuto,
+    };
+
+    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        UserName = (await AuthenticationState).User.Identity?.Name;
+    }
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

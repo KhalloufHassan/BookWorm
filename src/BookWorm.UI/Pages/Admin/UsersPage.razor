@@ -1,0 +1,194 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@using System.Security.Claims
+@inject BookWormApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Users · BookWorm</PageTitle>
+
+<PageHeader Title="Users" Subtitle="Everyone on this server has their own private library. Administrators manage accounts but can't see other people's books.">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.PersonAdd" OnClick="CreateAsync">Add user</MudButton>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_users is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+}
+else
+{
+    <MudPaper Elevation="0" Class="bw-table-wrap">
+        <MudTable T="AdminUser" Items="_users" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Username</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Role</MudTh>
+                <MudTh>Two-factor</MudTh>
+                <MudTh>Created</MudTh>
+                <MudTh Style="width: 1%"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Username">
+                    <span class="bw-strong">@context.UserName</span>
+                    @if (context.Id == _myId)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">you</MudChip>
+                    }
+                    @if (context.IsLockedOut)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Rounded.Lock">locked</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Email">@(context.Email ?? "—")</MudTd>
+                <MudTd DataLabel="Role">
+                    @if (context.IsAdmin)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text" Icon="@Icons.Material.Rounded.ManageAccounts">Administrator</MudChip>
+                    }
+                    else
+                    {
+                        <span>Reader</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Two-factor">
+                    @if (context.TwoFactorEnabled)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text" Icon="@Icons.Material.Rounded.VerifiedUser">On</MudChip>
+                    }
+                    else
+                    {
+                        <span class="bw-muted">Off</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Created">@Labels.DateTime(context.CreatedAt)</MudTd>
+                <MudTd>
+                    <MudMenu Icon="@Icons.Material.Rounded.MoreVert" Size="Size.Small" AriaLabel="@($"Actions for {context.UserName}")"
+                             AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Edit" OnClick="@(() => EditAsync(context))">Edit</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Password" OnClick="@(() => ResetPasswordAsync(context))">Set a new password</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.PhonelinkErase" OnClick="@(() => ResetTwoFactorAsync(context))"
+                                     Disabled="@(!context.TwoFactorEnabled)">Turn off two-factor</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.DeleteOutline" IconColor="Color.Error" OnClick="@(() => DeleteAsync(context))"
+                                     Disabled="@(context.Id == _myId)">Delete account</MudMenuItem>
+                    </MudMenu>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<AdminUser> _users;
+    private Guid? _myId;
+    private string _error;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthenticationState).User;
+        _myId = Guid.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _users = await Api.GetUsersAsync();
+            _error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<UserDialog>("Add a user", new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false, Data: AdminUser created })
+        {
+            Snackbar.Add($"Created the account “{created.UserName}”.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task EditAsync(AdminUser user)
+    {
+        var parameters = new DialogParameters<UserDialog> { { d => d.User, user }, { d => d.IsSelf, user.Id == _myId } };
+        var dialog = await Dialogs.ShowAsync<UserDialog>($"Edit {user.UserName}", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add("Saved.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task ResetPasswordAsync(AdminUser user)
+    {
+        var parameters = new DialogParameters<ResetPasswordDialog> { { d => d.User, user } };
+        var dialog = await Dialogs.ShowAsync<ResetPasswordDialog>("Set a new password", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add($"{user.UserName} has a new password.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task ResetTwoFactorAsync(AdminUser user)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Turn off two-factor authentication?",
+            $"Use this when {user.UserName} lost their authenticator app. They will sign in with just their password " +
+            "(or a passkey) and can set up two-factor again in their account settings. Their other sessions are signed out.",
+            yesText: "Turn off", cancelText: "Cancel");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.ResetTwoFactorAsync(user.Id);
+            Snackbar.Add($"Two-factor authentication is off for {user.UserName}.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(AdminUser user)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            $"Delete {user.UserName}'s account?",
+            $"This deletes {user.UserName}'s account and their whole library: books, authors, tags, reads and notes. This can't be undone.",
+            yesText: "Delete everything", cancelText: "Keep");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteUserAsync(user.Id);
+            Snackbar.Add($"Deleted the account “{user.UserName}”.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+}

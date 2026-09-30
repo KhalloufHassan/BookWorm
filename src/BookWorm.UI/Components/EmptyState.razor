@@ -1,0 +1,26 @@
+<div class="bw-empty">
+    <MudIcon Icon="@Icon" Class="bw-empty__icon" />
+    <MudText Typo="Typo.h6" HtmlTag="p">@Title</MudText>
+    @if (!string.IsNullOrEmpty(Text))
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Text</MudText>
+    }
+    @if (ChildContent is not null)
+    {
+        <div class="mt-4">@ChildContent</div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Icon { get; set; } = Icons.Material.Rounded.LocalLibrary;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter]
+    public string Text { get; set; }
+
+    [Parameter]
+    public RenderFragment ChildContent { get; set; }
+}

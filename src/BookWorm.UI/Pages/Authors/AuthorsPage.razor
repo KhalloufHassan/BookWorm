@@ -1,0 +1,290 @@
+@page "/authors"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject BrowseState Browse
+@inject IPreferenceStore Preferences
+@inject IDialogService Dialogs
+@inject NavigationManager Navigation
+
+<PageTitle>Authors · BookWorm</PageTitle>
+
+<PageHeader Title="Authors" Subtitle="@Subtitle">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="AddAsync">Add author</MudButton>
+</PageHeader>
+
+<MudPaper Elevation="0" Class="bw-toolbar">
+    <div class="bw-toolbar__row">
+        <MudTextField T="string" Value="Query.Search" ValueChanged="OnSearchChangedAsync" DebounceInterval="350"
+                      Placeholder="Search authors" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search"
+                      Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="bw-toolbar__search" aria-label="Search authors" />
+        <div class="bw-toolbar__controls">
+            <MudSelect T="AuthorSort" Value="CurrentSort" ValueChanged="OnSortChangedAsync" Label="Sort by"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Class="bw-toolbar__sort">
+                @if (HasSearch)
+                {
+                    <MudSelectItem Value="AuthorSort.Relevance">Best match</MudSelectItem>
+                }
+                <MudSelectItem Value="AuthorSort.Name">Name</MudSelectItem>
+                <MudSelectItem Value="AuthorSort.BookCount">Number of books</MudSelectItem>
+                <MudSelectItem Value="AuthorSort.BirthDate">Date of birth</MudSelectItem>
+                <MudSelectItem Value="AuthorSort.DeathDate">Date of death</MudSelectItem>
+                <MudSelectItem Value="AuthorSort.CreatedAt">Date added</MudSelectItem>
+            </MudSelect>
+            <MudTooltip Text="@(Descending ? "Descending" : "Ascending")">
+                <MudIconButton Icon="@(Descending ? Icons.Material.Rounded.ArrowDownward : Icons.Material.Rounded.ArrowUpward)"
+                               OnClick="ToggleDirectionAsync" aria-label="Change sort direction" />
+            </MudTooltip>
+            <MudBadge Content="@ActiveFilterCount" Visible="@(ActiveFilterCount > 0)" Color="Color.Primary" Overlap="true" Bordered="true">
+                <MudButton Variant="@(_showFilters ? Variant.Filled : Variant.Text)" Color="@(_showFilters ? Color.Secondary : Color.Default)"
+                           StartIcon="@Icons.Material.Rounded.FilterList" OnClick="@(() => _showFilters = !_showFilters)">Filters</MudButton>
+            </MudBadge>
+            <MudToggleGroup T="string" Value="_view" ValueChanged="OnViewChangedAsync" SelectionMode="SelectionMode.SingleSelection"
+                            Size="Size.Small" Outlined="true" CheckMark="false" Class="bw-toolbar__view">
+                <MudToggleItem Value="@CardsView"><MudIcon Icon="@Icons.Material.Rounded.GridView" title="Cards" /></MudToggleItem>
+                <MudToggleItem Value="@TableView"><MudIcon Icon="@Icons.Material.Rounded.TableRows" title="Table" /></MudToggleItem>
+            </MudToggleGroup>
+        </div>
+    </div>
+    @if (_showFilters)
+    {
+        <div class="bw-filters">
+            <div class="bw-filters__grid">
+                <div class="bw-filters__pair">
+                    <MudDatePicker Label="Born from" Date="ToDateTime(Query.BornFrom)" DateChanged="@(d => SetDateAsync(d, (q, v) => q.BornFrom = v))"
+                                   Clearable="true" Editable="true" DateFormat="d MMM yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" OpenTo="OpenTo.Year" />
+                    <MudDatePicker Label="to" Date="ToDateTime(Query.BornTo)" DateChanged="@(d => SetDateAsync(d, (q, v) => q.BornTo = v))"
+                                   Clearable="true" Editable="true" DateFormat="d MMM yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" OpenTo="OpenTo.Year" />
+                </div>
+                <div class="bw-filters__pair">
+                    <MudDatePicker Label="Died from" Date="ToDateTime(Query.DiedFrom)" DateChanged="@(d => SetDateAsync(d, (q, v) => q.DiedFrom = v))"
+                                   Clearable="true" Editable="true" DateFormat="d MMM yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" OpenTo="OpenTo.Year" />
+                    <MudDatePicker Label="to" Date="ToDateTime(Query.DiedTo)" DateChanged="@(d => SetDateAsync(d, (q, v) => q.DiedTo = v))"
+                                   Clearable="true" Editable="true" DateFormat="d MMM yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" OpenTo="OpenTo.Year" />
+                </div>
+            </div>
+            <div class="bw-filters__footer">
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.FilterListOff" OnClick="ClearFiltersAsync">Clear filters</MudButton>
+            </div>
+        </div>
+    }
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_result is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-8" />
+    }
+}
+else if (_result.TotalCount == 0)
+{
+    @if (HasSearch || ActiveFilterCount > 0)
+    {
+        <EmptyState Icon="@Icons.Material.Rounded.SearchOff" Title="No authors match" Text="Try other words or fewer filters." />
+    }
+    else
+    {
+        <EmptyState Icon="@Icons.Material.Rounded.HistoryEdu" Title="No authors yet"
+                    Text="Authors appear here as you add them, on their own or while adding a book.">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="AddAsync">Add an author</MudButton>
+        </EmptyState>
+    }
+}
+else if (_view == TableView)
+{
+    <MudPaper Elevation="0" Class="bw-table-wrap">
+        <MudTable T="AuthorSummary" Items="_result.Items" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
+                  OnRowClick="@(args => Open(args.Item))" RowClass="bw-clickable" Loading="_loading" LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh><SortableHeader Label="Name" Active="@(CurrentSort == AuthorSort.Name)" Descending="Descending" OnClick="@(() => SortByAsync(AuthorSort.Name))" /></MudTh>
+                <MudTh><SortableHeader Label="Born" Active="@(CurrentSort == AuthorSort.BirthDate)" Descending="Descending" OnClick="@(() => SortByAsync(AuthorSort.BirthDate))" /></MudTh>
+                <MudTh><SortableHeader Label="Died" Active="@(CurrentSort == AuthorSort.DeathDate)" Descending="Descending" OnClick="@(() => SortByAsync(AuthorSort.DeathDate))" /></MudTh>
+                <MudTh><SortableHeader Label="Books" Active="@(CurrentSort == AuthorSort.BookCount)" Descending="Descending" OnClick="@(() => SortByAsync(AuthorSort.BookCount))" /></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name"><span class="bw-strong">@context.Name</span></MudTd>
+                <MudTd DataLabel="Born">@Labels.Date(context.BirthDate)</MudTd>
+                <MudTd DataLabel="Died">@Labels.Date(context.DeathDate)</MudTd>
+                <MudTd DataLabel="Books">@context.BookCount</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+else
+{
+    <div class="bw-author-grid @(_loading ? "bw-loading" : "")">
+        @foreach (var author in _result.Items)
+        {
+            <a class="bw-author-card" href="@($"authors/{author.Id}")">
+                <MudAvatar Color="Color.Secondary" Size="Size.Large" Class="bw-author-card__avatar">@Labels.Initials(author.Name)</MudAvatar>
+                <div class="bw-author-card__body">
+                    <div class="bw-author-card__name">@author.Name</div>
+                    <div class="bw-muted">@Labels.Lifespan(author.BirthDate, author.DeathDate)</div>
+                    <div class="bw-muted">@Labels.Count(author.BookCount, "book")</div>
+                </div>
+            </a>
+        }
+    </div>
+}
+
+@if (_result is not null && PageCount > 1)
+{
+    <div class="bw-pager">
+        <MudPagination Count="PageCount" Selected="CurrentPage" SelectedChanged="OnPageChangedAsync" Color="Color.Primary" ShowFirstButton="true" ShowLastButton="true" />
+    </div>
+}
+
+@code {
+    private const string CardsView = "cards";
+    private const string TableView = "table";
+    private const int CardsPageSize = 36;
+    private const int TablePageSize = 50;
+
+    private PagedResult<AuthorSummary> _result;
+    private string _view = CardsView;
+    private bool _showFilters;
+    private bool _loading;
+    private string _error;
+    private int _loadVersion;
+
+    private AuthorListQuery Query => Browse.Authors;
+    private bool HasSearch => !string.IsNullOrWhiteSpace(Query.Search);
+    private AuthorSort CurrentSort => Query.Sort ?? (HasSearch ? AuthorSort.Relevance : AuthorSort.Name);
+    private int CurrentPage => Query.Page ?? 1;
+    private int PageCount => _result is null ? 0 : (int)Math.Ceiling(_result.TotalCount / (double)_result.PageSize);
+
+    private int ActiveFilterCount =>
+        (Query.BornFrom is not null || Query.BornTo is not null ? 1 : 0) + (Query.DiedFrom is not null || Query.DiedTo is not null ? 1 : 0);
+
+    private bool Descending => Query.Direction switch
+    {
+        SortDirection.Desc => true,
+        SortDirection.Asc => false,
+        _ => CurrentSort is AuthorSort.BookCount or AuthorSort.CreatedAt or AuthorSort.Relevance,
+    };
+
+    private string Subtitle => _result is null ? null : Labels.Count(_result.TotalCount, "author");
+
+    protected override async Task OnInitializedAsync()
+    {
+        _view = await Preferences.GetAsync(PreferenceKeys.AuthorsView) == TableView ? TableView : CardsView;
+        _showFilters = ActiveFilterCount > 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var version = ++_loadVersion;
+        _loading = true;
+        Query.PageSize = _view == TableView ? TablePageSize : CardsPageSize;
+        try
+        {
+            var result = await Api.GetAuthorsAsync(Query);
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            _result = result;
+            _error = null;
+            if (result.Items.Count == 0 && result.TotalCount > 0 && CurrentPage > 1)
+            {
+                Query.Page = PageCount;
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            if (version == _loadVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private Task ReloadFromFirstPageAsync()
+    {
+        Query.Page = 1;
+        return LoadAsync();
+    }
+
+    private Task OnSearchChangedAsync(string search)
+    {
+        Query.Search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        if (!HasSearch && Query.Sort == AuthorSort.Relevance)
+        {
+            Query.Sort = null;
+        }
+
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task OnSortChangedAsync(AuthorSort sort)
+    {
+        Query.Sort = sort;
+        Query.Direction = null;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task SortByAsync(AuthorSort sort) => CurrentSort == sort ? ToggleDirectionAsync() : OnSortChangedAsync(sort);
+
+    private Task ToggleDirectionAsync()
+    {
+        Query.Direction = Descending ? SortDirection.Asc : SortDirection.Desc;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task SetDateAsync(DateTime? value, Action<AuthorListQuery, DateOnly?> set)
+    {
+        set(Query, value is { } date ? DateOnly.FromDateTime(date) : null);
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        Query.BornFrom = Query.BornTo = Query.DiedFrom = Query.DiedTo = null;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private async Task OnViewChangedAsync(string view)
+    {
+        _view = view;
+        await Preferences.SetAsync(PreferenceKeys.AuthorsView, view);
+        await ReloadFromFirstPageAsync();
+    }
+
+    private Task OnPageChangedAsync(int page)
+    {
+        Query.Page = page;
+        return LoadAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<AuthorDialog>("Add an author", new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: AuthorDetails created })
+        {
+            Navigation.NavigateTo($"authors/{created.Id}");
+        }
+    }
+
+    private void Open(AuthorSummary author)
+    {
+        if (author is not null)
+        {
+            Navigation.NavigateTo($"authors/{author.Id}");
+        }
+    }
+
+    private static DateTime? ToDateTime(DateOnly? date) => date?.ToDateTime(TimeOnly.MinValue);
+}

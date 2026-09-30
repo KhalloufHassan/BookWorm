@@ -1,0 +1,174 @@
+@* Filters for the book list: status, tags, authors, rating and publication date. *@
+@inject BookWormApiClient Api
+@inject BrowseState Browse
+
+<div class="bw-filters">
+    <div class="bw-filters__group">
+        <MudText Typo="Typo.subtitle2">Status</MudText>
+        <MudChipSet T="BookStatus" SelectionMode="SelectionMode.MultiSelection" SelectedValues="SelectedStatuses"
+                    SelectedValuesChanged="OnStatusesChangedAsync" CheckMark="true" Size="Size.Small" Variant="Variant.Text">
+            @foreach (var status in Labels.BookStatuses)
+            {
+                <MudChip Value="status" Color="@Labels.ColorFor(status)">@Labels.For(status)</MudChip>
+            }
+        </MudChipSet>
+    </div>
+
+    <div class="bw-filters__grid">
+        <MudSelect T="Guid" Label="Tags (any of)" MultiSelection="true" SelectedValues="SelectedTags" SelectedValuesChanged="OnTagsChangedAsync"
+                   MultiSelectionTextFunc="@(_ => TagText)" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                   Disabled="@(_tags.Count == 0)" HelperText="@(_tags.Count == 0 ? "You have no tags yet" : null)">
+            @foreach (var tag in _tags)
+            {
+                <MudSelectItem Value="tag.Id">@tag.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        <div>
+            <MudAutocomplete T="AuthorSummary" Label="Authors (any of)" SearchFunc="SearchAuthorsAsync" ToStringFunc="@(a => a?.Name ?? "")"
+                             ValueChanged="AddAuthorAsync" DebounceInterval="250" MinCharacters="1" ResetValueOnEmptyText="true"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Clearable="true" @ref="_authorSearch" />
+            @foreach (var authorId in Query.AuthorIds ?? [])
+            {
+                <MudChip T="string" Size="Size.Small" OnClose="@(() => RemoveAuthorAsync(authorId))">@AuthorName(authorId)</MudChip>
+            }
+        </div>
+
+        <div class="bw-filters__pair">
+            <MudNumericField T="decimal?" Label="Rating from" Value="Query.RatingMin" ValueChanged="OnRatingMinChangedAsync"
+                             Min="0" Max="5" Step="0.5m" Format="0.0" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudNumericField T="decimal?" Label="to" Value="Query.RatingMax" ValueChanged="OnRatingMaxChangedAsync"
+                             Min="0" Max="5" Step="0.5m" Format="0.0" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </div>
+
+        <div class="bw-filters__pair">
+            <MudDatePicker Label="Published from" Date="ToDateTime(Query.PublishedFrom)" DateChanged="OnPublishedFromChangedAsync"
+                           Clearable="true" Editable="true" DateFormat="d MMM yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudDatePicker Label="to" Date="ToDateTime(Query.PublishedTo)" DateChanged="OnPublishedToChangedAsync"
+                           Clearable="true" Editable="true" DateFormat="d MMM yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </div>
+    </div>
+
+    <div class="bw-filters__footer">
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.FilterListOff" OnClick="ClearAsync">Clear filters</MudButton>
+    </div>
+</div>
+
+@code {
+    private List<TagSummary> _tags = [];
+    private MudAutocomplete<AuthorSummary> _authorSearch;
+
+    [Parameter, EditorRequired]
+    public BookListQuery Query { get; set; } = new();
+
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private IReadOnlyCollection<BookStatus> SelectedStatuses => Query.Status ?? [];
+    private IReadOnlyCollection<Guid> SelectedTags => Query.TagIds ?? [];
+
+    private string TagText =>
+        string.Join(", ", _tags.Where(t => SelectedTags.Contains(t.Id)).Select(t => t.Name));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tags = await Api.GetTagsAsync();
+    }
+
+    public static int CountActive(BookListQuery query) =>
+        (query.Status is { Length: > 0 } ? 1 : 0)
+        + (query.TagIds is { Length: > 0 } ? 1 : 0)
+        + (query.AuthorIds is { Length: > 0 } ? 1 : 0)
+        + (query.RatingMin is not null || query.RatingMax is not null ? 1 : 0)
+        + (query.PublishedFrom is not null || query.PublishedTo is not null ? 1 : 0);
+
+    private Task OnStatusesChangedAsync(IReadOnlyCollection<BookStatus> statuses)
+    {
+        Query.Status = statuses is { Count: > 0 } ? statuses.ToArray() : null;
+        return Changed.InvokeAsync();
+    }
+
+    private Task OnTagsChangedAsync(IReadOnlyCollection<Guid> tagIds)
+    {
+        Query.TagIds = tagIds is { Count: > 0 } ? tagIds.ToArray() : null;
+        return Changed.InvokeAsync();
+    }
+
+    private async Task<IEnumerable<AuthorSummary>> SearchAuthorsAsync(string text, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [];
+        }
+
+        var found = await Api.GetAuthorsAsync(new AuthorListQuery { Search = text, PageSize = 8 }, cancellationToken);
+        return found.Items;
+    }
+
+    private async Task AddAuthorAsync(AuthorSummary author)
+    {
+        if (author is null)
+        {
+            return;
+        }
+
+        Browse.AuthorNames[author.Id] = author.Name;
+        if (Query.AuthorIds?.Contains(author.Id) != true)
+        {
+            Query.AuthorIds = [.. Query.AuthorIds ?? [], author.Id];
+            await Changed.InvokeAsync();
+        }
+
+        if (_authorSearch is not null)
+        {
+            await _authorSearch.ClearAsync();
+        }
+    }
+
+    private Task RemoveAuthorAsync(Guid authorId)
+    {
+        var remaining = (Query.AuthorIds ?? []).Where(id => id != authorId).ToArray();
+        Query.AuthorIds = remaining.Length > 0 ? remaining : null;
+        return Changed.InvokeAsync();
+    }
+
+    private string AuthorName(Guid id) => Browse.AuthorNames.TryGetValue(id, out var name) ? name : "Author";
+
+    private Task OnRatingMinChangedAsync(decimal? value)
+    {
+        Query.RatingMin = value;
+        return Changed.InvokeAsync();
+    }
+
+    private Task OnRatingMaxChangedAsync(decimal? value)
+    {
+        Query.RatingMax = value;
+        return Changed.InvokeAsync();
+    }
+
+    private Task OnPublishedFromChangedAsync(DateTime? value)
+    {
+        Query.PublishedFrom = value is { } date ? DateOnly.FromDateTime(date) : null;
+        return Changed.InvokeAsync();
+    }
+
+    private Task OnPublishedToChangedAsync(DateTime? value)
+    {
+        Query.PublishedTo = value is { } date ? DateOnly.FromDateTime(date) : null;
+        return Changed.InvokeAsync();
+    }
+
+    private Task ClearAsync()
+    {
+        Query.Status = null;
+        Query.TagIds = null;
+        Query.AuthorIds = null;
+        Query.RatingMin = null;
+        Query.RatingMax = null;
+        Query.PublishedFrom = null;
+        Query.PublishedTo = null;
+        return Changed.InvokeAsync();
+    }
+
+    private static DateTime? ToDateTime(DateOnly? date) => date?.ToDateTime(TimeOnly.MinValue);
+}

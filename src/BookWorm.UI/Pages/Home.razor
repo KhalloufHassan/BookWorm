@@ -1,0 +1,326 @@
+@page "/"
+@attribute [Authorize]
+@implements IDisposable
+@inject BookWormApiClient Api
+@inject ThemeState Theme
+@inject BrowseState Browse
+@inject NavigationManager Navigation
+
+<PageTitle>Home · BookWorm</PageTitle>
+
+<PageHeader Title="@Greeting" Subtitle="Your reading at a glance">
+    @if (_stats is { AvailableYears.Count: > 1 })
+    {
+        <MudSelect T="int" Value="_stats.Year" ValueChanged="LoadYearAsync" Label="Year" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Class="bw-year-select">
+            @foreach (var year in _stats.AvailableYears)
+            {
+                <MudSelectItem Value="year">@year</MudSelectItem>
+            }
+        </MudSelect>
+    }
+</PageHeader>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_reading is null || _stats is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-8" />
+    }
+}
+else
+{
+    @if (_reading.Count > 0)
+    {
+        var current = _reading[0];
+        <section class="bw-continue" aria-label="Continue reading">
+            <a class="bw-continue__cover" href="@($"books/{current.BookId}")">
+                <BookCover Id="current.BookId" Title="@current.Title" Author="@current.Authors.FirstOrDefault()?.Name" CoverVersion="current.CoverVersion" Size="medium" />
+            </a>
+            <div class="bw-continue__body">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">Continue reading</MudText>
+                <MudText Typo="Typo.h5" HtmlTag="h2" Class="bw-continue__title">@current.Title</MudText>
+                <MudText Color="Color.Secondary">@Labels.Authors(current.Authors)</MudText>
+                @if (current.Read.Progress is { } progress)
+                {
+                    <div class="bw-continue__progress">
+                        <MudProgressLinear Value="@(progress * 100)" Color="Color.Primary" Rounded="true" Size="Size.Medium" />
+                        <span>@Labels.Percent(progress)</span>
+                    </div>
+                }
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@LastRead(current.Read)</MudText>
+                <div class="mt-3">
+                    <MudButton Href="@($"books/{current.BookId}/read")" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.MenuBook">
+                        @(current.Read.Progress > 0 ? "Continue" : "Start reading")
+                    </MudButton>
+                </div>
+            </div>
+            @if (_reading.Count > 1)
+            {
+                <div class="bw-continue__others">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Also reading</MudText>
+                    @foreach (var other in _reading.Skip(1).Take(4))
+                    {
+                        <a class="bw-mini-book" href="@($"books/{other.BookId}/read")" title="Continue reading">
+                            <BookCover Id="other.BookId" Title="@other.Title" CoverVersion="other.CoverVersion" Size="tiny" />
+                            <span class="bw-mini-book__text">
+                                <span class="bw-mini-book__title">@other.Title</span>
+                                <span class="bw-muted">@(other.Read.Progress is { } p ? Labels.Percent(p) : Labels.Authors(other.Authors))</span>
+                            </span>
+                        </a>
+                    }
+                </div>
+            }
+        </section>
+    }
+    else if (_stats.Library.Books == 0)
+    {
+        <EmptyState Title="Welcome to your library" Text="Add your first book: type its details, or start from an ebook file and read it right here.">
+            <MudButton Href="books" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.AutoStories">Go to Books</MudButton>
+        </EmptyState>
+    }
+
+    <div class="bw-kpis">
+        <div class="bw-kpi">
+            <span class="bw-kpi__label">Books finished in @_stats.Year</span>
+            <span class="bw-kpi__value">@_stats.BooksFinishedInYear</span>
+        </div>
+        <div class="bw-kpi">
+            <span class="bw-kpi__label">Reading this week</span>
+            <span class="bw-kpi__value">@Labels.Minutes(_stats.MinutesThisWeek)</span>
+            <span class="bw-kpi__note">about @Labels.Minutes(_stats.AverageMinutesPerDay) a day lately</span>
+        </div>
+        <div class="bw-kpi">
+            <span class="bw-kpi__label">Reading streak</span>
+            <span class="bw-kpi__value">@Labels.Count(_stats.CurrentStreakDays, "day")</span>
+            <span class="bw-kpi__note">longest: @Labels.Count(_stats.LongestStreakDays, "day")</span>
+        </div>
+        <div class="bw-kpi">
+            <span class="bw-kpi__label">Average rating</span>
+            <span class="bw-kpi__value">@(_stats.AverageRating is { } rating ? Labels.Rating(rating) : "–")</span>
+            <span class="bw-kpi__note">of @Labels.Count(_stats.RatingDistribution.Sum(), "rated book")</span>
+        </div>
+    </div>
+
+    <div class="bw-dashboard-grid">
+        <MudPaper Elevation="0" Class="bw-section bw-chart">
+            <MudText Typo="Typo.h6" HtmlTag="h2">Books finished in @_stats.Year</MudText>
+            @if (_stats.BooksFinishedInYear == 0)
+            {
+                <MudText Color="Color.Secondary" Class="bw-chart__empty">No finished reads in @_stats.Year yet.</MudText>
+            }
+            else
+            {
+                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@Series("Books", _stats.BooksFinishedByMonth)" ChartLabels="@Months"
+                          ChartOptions="@ChartOptions(_stats.BooksFinishedByMonth.Max(), wholeNumbers: true)" Height="220px" Width="100%" aria-label="Books finished per month" />
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="0" Class="bw-section bw-chart">
+            <MudText Typo="Typo.h6" HtmlTag="h2">Reading time, last 30 days</MudText>
+            @if (_stats.LastThirtyDays.All(d => d.Minutes == 0))
+            {
+                <MudText Color="Color.Secondary" Class="bw-chart__empty">Time spent in BookWorm's reader shows up here.</MudText>
+            }
+            else
+            {
+                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@Series("Minutes", _stats.LastThirtyDays.Select(d => d.Minutes))"
+                          ChartLabels="@DayLabels" ChartOptions="@ChartOptions(_stats.LastThirtyDays.Max(d => d.Minutes), wholeNumbers: true)" Height="220px" Width="100%" aria-label="Minutes read per day" />
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="0" Class="bw-section bw-chart">
+            <MudText Typo="Typo.h6" HtmlTag="h2">Reading time in @_stats.Year</MudText>
+            @if (_stats.MinutesInYear == 0)
+            {
+                <MudText Color="Color.Secondary" Class="bw-chart__empty">No reading time recorded in @_stats.Year.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@Labels.Minutes(_stats.MinutesInYear) in total, in hours per month</MudText>
+                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@Series("Hours", _stats.MinutesByMonth.Select(m => Math.Round(m / 60.0, 1)))" ChartLabels="@Months"
+                          ChartOptions="@ChartOptions(_stats.MinutesByMonth.Max() / 60.0, wholeNumbers: false)" Height="200px" Width="100%" aria-label="Hours read per month" />
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="0" Class="bw-section bw-chart">
+            <MudText Typo="Typo.h6" HtmlTag="h2">Your ratings</MudText>
+            @if (_stats.RatingDistribution.Sum() == 0)
+            {
+                <MudText Color="Color.Secondary" Class="bw-chart__empty">Rate books to see how you rate.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Books per rating</MudText>
+                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@Series("Books", _stats.RatingDistribution)" ChartLabels="@RatingLabels"
+                          ChartOptions="@ChartOptions(_stats.RatingDistribution.Max(), wholeNumbers: true)" Height="200px" Width="100%" aria-label="Books per rating" />
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="0" Class="bw-section">
+            <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">Your library</MudText>
+            <div class="bw-status-tiles">
+                @foreach (var (status, count) in StatusCounts)
+                {
+                    <button type="button" class="bw-status-tile" @onclick="@(() => ShowStatus(status))">
+                        <MudIcon Icon="@Labels.IconFor(status)" Color="@Labels.ColorFor(status)" />
+                        <span class="bw-status-tile__count">@count</span>
+                        <span class="bw-muted">@Labels.For(status)</span>
+                    </button>
+                }
+            </div>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-3">
+                @Labels.Count(_stats.Library.Books, "book") by @Labels.Count(_stats.Library.Authors, "author") · @Labels.Count(_stats.Library.Highlights, "highlight")
+            </MudText>
+        </MudPaper>
+
+        <MudPaper Elevation="0" Class="bw-section">
+            <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">Favourites</MudText>
+            <div class="bw-rankings">
+                <div>
+                    <MudText Typo="Typo.subtitle2">Most finished authors</MudText>
+                    @if (_stats.TopAuthors.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">None yet.</MudText>
+                    }
+                    <ol class="bw-ranking">
+                        @foreach (var author in _stats.TopAuthors)
+                        {
+                            <li><a href="@($"authors/{author.Id}")">@author.Name</a><span class="bw-muted">@author.Count</span></li>
+                        }
+                    </ol>
+                </div>
+                <div>
+                    <MudText Typo="Typo.subtitle2">Biggest tags</MudText>
+                    @if (_stats.TopTags.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">None yet.</MudText>
+                    }
+                    <ol class="bw-ranking">
+                        @foreach (var tag in _stats.TopTags)
+                        {
+                            <li><button type="button" class="bw-link-button" @onclick="@(() => ShowTag(tag.Id))">@tag.Name</button><span class="bw-muted">@tag.Count</span></li>
+                        }
+                    </ol>
+                </div>
+            </div>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    private static readonly string[] Months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    private static readonly string[] RatingLabels = ["≤ 1", "1–2", "2–3", "3–4", "4–5"];
+
+    // Single-series bars in the app's accent; checked for contrast against the card surface in both themes.
+    private const string AccentLight = "#b5563a";
+    private const string AccentDark = "#cc7747";
+
+    private List<CurrentRead> _reading;
+    private ReadingStats _stats;
+    private string _error;
+    private string _userName;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; }
+
+    private string Greeting => _userName is null ? "Home" : $"Hello, {_userName}";
+
+    private string[] DayLabels => _stats is null ? [] : _stats.LastThirtyDays
+        .Select((day, index) => index % 5 == 4 || index == 29 ? day.Date.ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture) : "")
+        .ToArray();
+
+    private IEnumerable<(BookStatus Status, int Count)> StatusCounts => _stats is null ? [] :
+    [
+        (BookStatus.CurrentlyReading, _stats.Library.CurrentlyReading),
+        (BookStatus.WantToRead, _stats.Library.WantToRead),
+        (BookStatus.Finished, _stats.Library.Finished),
+        (BookStatus.Skipped, _stats.Library.Skipped),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Theme.Changed += OnThemeChanged;
+        _userName = (await AuthenticationState).User.Identity?.Name;
+        try
+        {
+            var reading = Api.GetCurrentReadsAsync();
+            var stats = Api.GetStatsAsync(null, TimeZoneInfo.Local.Id);
+            _reading = await reading;
+            _stats = await stats;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private async Task LoadYearAsync(int year)
+    {
+        try
+        {
+            _stats = await Api.GetStatsAsync(year, TimeZoneInfo.Local.Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private static List<ChartSeries<double>> Series(string name, IEnumerable<int> values) =>
+        Series(name, values.Select(v => (double)v));
+
+    private static List<ChartSeries<double>> Series(string name, IEnumerable<double> values) =>
+        [new ChartSeries<double> { Name = name, Data = values.ToArray() }];
+
+    private BarChartOptions ChartOptions(double max, bool wholeNumbers) => new()
+    {
+        ShowLegend = false,
+        ShowToolTips = true,
+        ChartPalette = [Theme.IsDarkMode ? AccentDark : AccentLight],
+        YAxisLines = true,
+        XAxisLines = false,
+        YAxisTicks = TickStep(max, wholeNumbers),
+        MaxNumYAxisTicks = 6,
+        YAxisFormat = wholeNumbers ? "0" : "0.#",
+        BarWidthRatio = 0.6,
+    };
+
+    /// <summary>A round step giving about four gridlines up to <paramref name="max"/>.</summary>
+    private static int TickStep(double max, bool wholeNumbers)
+    {
+        if (max <= 4)
+        {
+            return 1;
+        }
+
+        var rough = max / 4;
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(rough)));
+        var step = new[] { 1, 2, 5, 10 }.Select(f => f * magnitude).First(s => s >= rough);
+        return Math.Max(1, (int)step);
+    }
+
+    private static string LastRead(ReadDetails read) => read.LastOpenedAt is { } opened
+        ? $"Last read {Labels.DateTime(opened)}"
+        : read.StartedAt is { } started ? $"Started {Labels.DateTime(started)}" : "";
+
+    private void ShowStatus(BookStatus status)
+    {
+        Browse.Books = new BookListQuery { Status = [status] };
+        Navigation.NavigateTo("books");
+    }
+
+    private void ShowTag(Guid tagId)
+    {
+        Browse.ShowBooksWithTag(tagId);
+        Navigation.NavigateTo("books");
+    }
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

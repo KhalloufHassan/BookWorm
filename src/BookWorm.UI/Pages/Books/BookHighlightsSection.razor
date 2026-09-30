@@ -1,0 +1,149 @@
+@* The book's highlights and their notes, with links into the reader. *@
+@inject BookWormApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<MudPaper Elevation="0" Class="bw-section">
+    <div class="bw-section__header">
+        <MudText Typo="Typo.h5" HtmlTag="h2">Highlights</MudText>
+        @if (_highlights?.Count > 0)
+        {
+            <MudButton Href="@BookWormApiClient.NotesUrl(Book.Id)" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.Download">Download notes</MudButton>
+        }
+    </div>
+
+    @if (_highlights is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_highlights.Count == 0)
+    {
+        <MudText Color="Color.Secondary">
+            @(Book.Files.Count == 0
+                ? "Upload the book's file to read it here, highlight passages and add notes to them."
+                : "None yet. Select text while reading to highlight it and add a note.")
+        </MudText>
+    }
+    else
+    {
+        <ul class="bw-highlight-list">
+            @foreach (var highlight in _highlights)
+            {
+                <li class="bw-highlight" style="--bw-swatch: @Labels.Css(highlight.Color)">
+                    @if (highlight.State == HighlightState.Anchored && highlight.FileId is { } fileId)
+                    {
+                        <a class="bw-highlight__quote" href="@ReaderLink(fileId, highlight.Location)" title="Open in the reader">@highlight.Text</a>
+                    }
+                    else
+                    {
+                        <div class="bw-highlight__quote">@highlight.Text</div>
+                    }
+                    @if (highlight.Note is { } note)
+                    {
+                        <MarkdownView Markdown="@note" Class="bw-highlight__note" />
+                    }
+                    <div class="bw-highlight__meta">
+                        <span>@Where(highlight)</span>
+                        <span class="bw-highlight__actions">
+                            <MudIconButton Icon="@Icons.Material.Rounded.EditNote" Size="Size.Small" aria-label="Edit the note" OnClick="@(() => EditNoteAsync(highlight))" />
+                            <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="Delete the highlight" OnClick="@(() => DeleteAsync(highlight))" />
+                        </span>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</MudPaper>
+
+@code {
+    private List<HighlightDetails> _highlights;
+    private BookDetails _loadedFor;
+
+    [Parameter, EditorRequired]
+    public BookDetails Book { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // The page passes a fresh copy of the book whenever it reloads it (e.g. after a file changed).
+        if (ReferenceEquals(_loadedFor, Book))
+        {
+            return;
+        }
+
+        _loadedFor = Book;
+        try
+        {
+            _highlights = Book.HighlightCount == 0 ? [] : await Api.GetHighlightsAsync(Book.Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _highlights = [];
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+
+    private string ReaderLink(Guid fileId, string location) =>
+        $"books/{Book.Id}/read?file={fileId}&at={Uri.EscapeDataString(location)}";
+
+    private static string Where(HighlightDetails highlight)
+    {
+        var parts = new List<string> { BookFormats.Label(highlight.Format) };
+        if (highlight.Chapter is { } chapter)
+        {
+            parts.Add(chapter);
+        }
+
+        if (highlight.PageLabel is { } page)
+        {
+            parts.Add($"p. {page}");
+        }
+
+        parts.Add(highlight.State switch
+        {
+            HighlightState.Missing => "not found in the current file",
+            HighlightState.NeedsCheck => "the file changed; open the book to find it again",
+            _ => Labels.DateTime(highlight.CreatedAt),
+        });
+        return string.Join(" · ", parts);
+    }
+
+    private async Task EditNoteAsync(HighlightDetails highlight)
+    {
+        var (saved, note) = await HighlightNoteDialog.ShowAsync(Dialogs, highlight.Text, highlight.Note, highlight.Color);
+        if (!saved)
+        {
+            return;
+        }
+
+        try
+        {
+            var updated = await Api.UpdateHighlightAsync(Book.Id, highlight.Id, new UpdateHighlightRequest { Color = highlight.Color, Note = note, Version = highlight.Version });
+            _highlights![_highlights.FindIndex(h => h.Id == updated.Id)] = updated;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(HighlightDetails highlight)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete this highlight?",
+            highlight.Note is null ? "The highlight will be removed." : "The highlight and its note will be deleted.",
+            yesText: "Delete", cancelText: "Keep it");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteHighlightAsync(Book.Id, highlight.Id);
+            _highlights.RemoveAll(h => h.Id == highlight.Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+}

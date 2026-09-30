@@ -1,0 +1,340 @@
+@page "/books"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject BrowseState Browse
+@inject IPreferenceStore Preferences
+@inject NavigationManager Navigation
+@inject BrowserFiles Files
+@inject PendingBook Pending
+@inject ISnackbar Snackbar
+
+<PageTitle>Books · BookWorm</PageTitle>
+
+<PageHeader Title="Books" Subtitle="@Subtitle">
+    <MudMenu Icon="@Icons.Material.Rounded.MoreVert" AriaLabel="More" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+        <MudMenuItem Icon="@Icons.Material.Rounded.Download" Href="@BookWormApiClient.NotesExportUrl">Export all notes (Markdown, zip)</MudMenuItem>
+    </MudMenu>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="AddFromFileAsync" Disabled="_readingFile">
+        @(_readingFile ? "Reading the file…" : "Add from file")
+    </MudButton>
+    <MudButton Href="books/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add">Add book</MudButton>
+</PageHeader>
+
+<MudPaper Elevation="0" Class="bw-toolbar">
+    <div class="bw-toolbar__row">
+        <MudTextField T="string" Value="Query.Search" ValueChanged="OnSearchChangedAsync" DebounceInterval="350"
+                      Placeholder="Search titles, authors, tags and notes" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" Class="bw-toolbar__search" aria-label="Search books" />
+        <div class="bw-toolbar__controls">
+            <MudSelect T="BookSort" Value="CurrentSort" ValueChanged="OnSortChangedAsync" Label="Sort by"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Class="bw-toolbar__sort">
+                @if (HasSearch)
+                {
+                    <MudSelectItem Value="BookSort.Relevance">Best match</MudSelectItem>
+                }
+                <MudSelectItem Value="BookSort.Title">Title</MudSelectItem>
+                <MudSelectItem Value="BookSort.Author">Author</MudSelectItem>
+                <MudSelectItem Value="BookSort.Rating">Rating</MudSelectItem>
+                <MudSelectItem Value="BookSort.PublicationDate">Publication date</MudSelectItem>
+                <MudSelectItem Value="BookSort.CreatedAt">Date added</MudSelectItem>
+                <MudSelectItem Value="BookSort.UpdatedAt">Last changed</MudSelectItem>
+            </MudSelect>
+            <MudTooltip Text="@(Descending ? "Descending" : "Ascending")">
+                <MudIconButton Icon="@(Descending ? Icons.Material.Rounded.ArrowDownward : Icons.Material.Rounded.ArrowUpward)"
+                               OnClick="ToggleDirectionAsync" aria-label="Change sort direction" />
+            </MudTooltip>
+            <MudBadge Content="@ActiveFilterCount" Visible="@(ActiveFilterCount > 0)" Color="Color.Primary" Overlap="true" Bordered="true">
+                <MudButton Variant="@(_showFilters ? Variant.Filled : Variant.Text)" Color="@(_showFilters ? Color.Secondary : Color.Default)"
+                           StartIcon="@Icons.Material.Rounded.FilterList" OnClick="@(() => _showFilters = !_showFilters)">Filters</MudButton>
+            </MudBadge>
+            <MudToggleGroup T="string" Value="_view" ValueChanged="OnViewChangedAsync" SelectionMode="SelectionMode.SingleSelection"
+                            Size="Size.Small" Outlined="true" CheckMark="false" Class="bw-toolbar__view">
+                <MudToggleItem Value="@CardsView"><MudIcon Icon="@Icons.Material.Rounded.GridView" title="Cards" /></MudToggleItem>
+                <MudToggleItem Value="@TableView"><MudIcon Icon="@Icons.Material.Rounded.TableRows" title="Table" /></MudToggleItem>
+            </MudToggleGroup>
+        </div>
+    </div>
+    @if (_showFilters)
+    {
+        <BookFilters Query="Query" Changed="ReloadFromFirstPageAsync" />
+    }
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_result is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-8" />
+    }
+}
+else if (_result.TotalCount == 0)
+{
+    @if (IsFiltered)
+    {
+        <EmptyState Icon="@Icons.Material.Rounded.SearchOff" Title="No books match" Text="Try other words or fewer filters.">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ClearAllAsync">Show all books</MudButton>
+        </EmptyState>
+    }
+    else
+    {
+        <EmptyState Title="Your library is empty" Text="Add a book you want to read, are reading, or have already read. Starting from an ebook file fills in the details for you.">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="AddFromFileAsync" Class="mr-2">Add from a file</MudButton>
+            <MudButton Href="books/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add">Add your first book</MudButton>
+        </EmptyState>
+    }
+}
+else if (_view == TableView)
+{
+    <MudPaper Elevation="0" Class="bw-table-wrap">
+        <MudTable T="BookSummary" Items="_result.Items" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
+                  OnRowClick="@(args => OpenBook(args.Item))" RowClass="bw-clickable" Loading="_loading" LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh><SortableHeader Label="Title" Active="@(CurrentSort == BookSort.Title)" Descending="Descending" OnClick="@(() => SortByAsync(BookSort.Title))" /></MudTh>
+                <MudTh><SortableHeader Label="Authors" Active="@(CurrentSort == BookSort.Author)" Descending="Descending" OnClick="@(() => SortByAsync(BookSort.Author))" /></MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh><SortableHeader Label="Rating" Active="@(CurrentSort == BookSort.Rating)" Descending="Descending" OnClick="@(() => SortByAsync(BookSort.Rating))" /></MudTh>
+                <MudTh><SortableHeader Label="Published" Active="@(CurrentSort == BookSort.PublicationDate)" Descending="Descending" OnClick="@(() => SortByAsync(BookSort.PublicationDate))" /></MudTh>
+                <MudTh>Tags</MudTh>
+                <MudTh><SortableHeader Label="Added" Active="@(CurrentSort == BookSort.CreatedAt)" Descending="Descending" OnClick="@(() => SortByAsync(BookSort.CreatedAt))" /></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Title">
+                    <div class="bw-title-cell">
+                        <BookCover Id="context.Id" Title="@context.Title" CoverVersion="context.CoverVersion" Size="tiny" />
+                        <span class="bw-strong">@context.Title</span>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Authors">@Labels.Authors(context.Authors)</MudTd>
+                <MudTd DataLabel="Status"><StatusChip Status="context.Status" /></MudTd>
+                <MudTd DataLabel="Rating"><RatingStars Value="context.Rating" /></MudTd>
+                <MudTd DataLabel="Published">@Labels.Date(context.OriginalPublicationDate)</MudTd>
+                <MudTd DataLabel="Tags">
+                    @foreach (var tag in context.Tags)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary">@tag.Name</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Added">@Labels.DateTime(context.CreatedAt)</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+else
+{
+    <div class="bw-book-grid @(_loading ? "bw-loading" : "")">
+        @foreach (var book in _result.Items)
+        {
+            <a class="bw-book-card" href="@($"books/{book.Id}")">
+                <div class="bw-book-card__cover">
+                    <BookCover Id="book.Id" Title="@book.Title" Author="@book.Authors.FirstOrDefault()?.Name" CoverVersion="book.CoverVersion" />
+                    @if (book.Progress is { } progress && book.Status != BookStatus.Finished)
+                    {
+                        <div class="bw-book-card__progress" title="@($"{Labels.Percent(progress)} read")"><span style="width: @Labels.Percent(progress)"></span></div>
+                    }
+                </div>
+                <div class="bw-book-card__body">
+                    <div class="bw-book-card__title">@book.Title</div>
+                    <div class="bw-book-card__authors">@Labels.Authors(book.Authors)</div>
+                    <div class="bw-book-card__meta">
+                        <StatusChip Status="book.Status" />
+                        <RatingStars Value="book.Rating" />
+                    </div>
+                </div>
+            </a>
+        }
+    </div>
+}
+
+@if (_result is not null && PageCount > 1)
+{
+    <div class="bw-pager">
+        <MudPagination Count="PageCount" Selected="CurrentPage" SelectedChanged="OnPageChangedAsync" Color="Color.Primary" ShowFirstButton="true" ShowLastButton="true" />
+    </div>
+}
+
+@code {
+    private const string CardsView = "cards";
+    private const string TableView = "table";
+    private const int CardsPageSize = 24;
+    private const int TablePageSize = 50;
+
+    private PagedResult<BookSummary> _result;
+    private string _view = CardsView;
+    private bool _showFilters;
+    private bool _loading;
+    private string _error;
+    private int _loadVersion;
+
+    private BookListQuery Query => Browse.Books;
+    private bool HasSearch => !string.IsNullOrWhiteSpace(Query.Search);
+    private int ActiveFilterCount => BookFilters.CountActive(Query);
+    private bool IsFiltered => HasSearch || ActiveFilterCount > 0;
+    private BookSort CurrentSort => Query.Sort ?? (HasSearch ? BookSort.Relevance : BookSort.Title);
+    private int CurrentPage => Query.Page ?? 1;
+    private int PageCount => _result is null ? 0 : (int)Math.Ceiling(_result.TotalCount / (double)_result.PageSize);
+
+    // Mirrors the server's defaults: best, newest and most recently changed first.
+    private bool Descending => Query.Direction switch
+    {
+        SortDirection.Desc => true,
+        SortDirection.Asc => false,
+        _ => CurrentSort is BookSort.Rating or BookSort.CreatedAt or BookSort.UpdatedAt or BookSort.Relevance,
+    };
+
+    private string Subtitle => _result is null ? null
+        : IsFiltered ? $"{Labels.Count(_result.TotalCount, "book")} found"
+        : $"{Labels.Count(_result.TotalCount, "book")} in your library";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _view = await Preferences.GetAsync(PreferenceKeys.BooksView) == TableView ? TableView : CardsView;
+        _showFilters = ActiveFilterCount > 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var version = ++_loadVersion;
+        _loading = true;
+        Query.PageSize = _view == TableView ? TablePageSize : CardsPageSize;
+        try
+        {
+            var result = await Api.GetBooksAsync(Query);
+            if (version != _loadVersion)
+            {
+                return; // A newer search has started; ignore this answer.
+            }
+
+            _result = result;
+            _error = null;
+
+            // The list may have shrunk (e.g. after deleting books); go back to its last page.
+            if (result.Items.Count == 0 && result.TotalCount > 0 && CurrentPage > 1)
+            {
+                Query.Page = PageCount;
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            if (version == _loadVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private Task ReloadFromFirstPageAsync()
+    {
+        Query.Page = 1;
+        return LoadAsync();
+    }
+
+    private Task OnSearchChangedAsync(string search)
+    {
+        Query.Search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        if (!HasSearch && Query.Sort == BookSort.Relevance)
+        {
+            Query.Sort = null;
+        }
+
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task OnSortChangedAsync(BookSort sort)
+    {
+        Query.Sort = sort;
+        Query.Direction = null;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task SortByAsync(BookSort sort)
+    {
+        if (CurrentSort == sort)
+        {
+            return ToggleDirectionAsync();
+        }
+
+        return OnSortChangedAsync(sort);
+    }
+
+    private Task ToggleDirectionAsync()
+    {
+        Query.Direction = Descending ? SortDirection.Asc : SortDirection.Desc;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private async Task OnViewChangedAsync(string view)
+    {
+        _view = view;
+        await Preferences.SetAsync(PreferenceKeys.BooksView, view);
+        await ReloadFromFirstPageAsync();
+    }
+
+    private Task OnPageChangedAsync(int page)
+    {
+        Query.Page = page;
+        return LoadAsync();
+    }
+
+    private Task ClearAllAsync()
+    {
+        Browse.Books = new BookListQuery();
+        return LoadAsync();
+    }
+
+    private bool _readingFile;
+
+    /// <summary>Picks an ebook, reads its title, authors and cover, and opens a pre-filled book form.</summary>
+    private async Task AddFromFileAsync()
+    {
+        var picked = await Files.PickAsync(BookFormats.AcceptAttribute);
+        if (picked is null)
+        {
+            return;
+        }
+
+        if (BookFormats.FromFileName(picked.Name) is not { } format)
+        {
+            Snackbar.Add($"“{picked.Name}” isn't a supported format. Use EPUB, PDF, MOBI, AZW3, FB2 or CBZ.", Severity.Warning);
+            await Files.ReleaseAsync(picked.Key);
+            return;
+        }
+
+        _readingFile = true;
+        try
+        {
+            var metadata = await Files.ReadMetadataAsync(picked.Key, format);
+            var preview = metadata.CoverKey is { } cover ? await Files.ObjectUrlAsync(cover) : null;
+            Pending.Current = new PendingBookFile(picked, format, metadata, preview);
+            Navigation.NavigateTo("books/new?fromFile=true");
+        }
+        catch (Microsoft.JSInterop.JSException ex)
+        {
+            Snackbar.Add($"The file couldn't be read: {ex.Message.Split('\n')[0]}", Severity.Error);
+            await Files.ReleaseAsync(picked.Key);
+        }
+        finally
+        {
+            _readingFile = false;
+        }
+    }
+
+    private void OpenBook(BookSummary book)
+    {
+        if (book is not null)
+        {
+            Navigation.NavigateTo($"books/{book.Id}");
+        }
+    }
+}

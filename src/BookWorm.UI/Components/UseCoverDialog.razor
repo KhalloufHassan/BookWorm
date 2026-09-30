@@ -1,0 +1,36 @@
+@* Offers the cover found in a book file. *@
+
+<MudDialog>
+    <DialogContent>
+        <div class="bw-cover-offer">
+            <img src="@ImageUrl" alt="The cover found in the file" />
+            <MudText>@Message</MudText>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">No thanks</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => MudDialog.Close(DialogResult.Ok(true)))">Use this cover</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public string ImageUrl { get; set; } = "";
+
+    [Parameter]
+    public string Message { get; set; } = "";
+
+    public static async Task<bool> ShowAsync(IDialogService dialogs, string imageUrl, string message)
+    {
+        var dialog = await dialogs.ShowAsync<UseCoverDialog>("Use this cover?", new DialogParameters<UseCoverDialog>
+        {
+            { d => d.ImageUrl, imageUrl },
+            { d => d.Message, message },
+        }, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        var result = await dialog.Result;
+        return result is { Canceled: false };
+    }
+}

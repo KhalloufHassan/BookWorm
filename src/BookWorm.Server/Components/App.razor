@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    @* Applies the light/dark choice saved on this device (or the device's own setting) before anything paints. *@
+    <script>
+        (function () {
+            var saved = localStorage.getItem('bookworm.theme');
+            var dark = saved === 'dark' || (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        })();
+    </script>
+    <ResourcePreloader />
+    @if (PageRenderMode is not null)
+    {
+        <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
+        <link rel="stylesheet" href="@Assets["_content/BookWorm.UI/css/bookworm.css"]" />
+    }
+    else
+    {
+        <link rel="stylesheet" href="@Assets["css/account.css"]" />
+    }
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <ImportMap />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <HeadOutlet @rendermode="PageRenderMode" />
+</head>
+
+<body>
+    @if (PageRenderMode is not null)
+    {
+        @* Shown until the WebAssembly app has rendered its layout (see .bw-boot in app.css). *@
+        <div id="bw-boot" class="bw-boot" role="status">Opening your library…</div>
+    }
+    <Routes @rendermode="PageRenderMode" />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    @if (PageRenderMode is not null)
+    {
+        <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
+    }
+    else
+    {
+        <script src="@Assets["Components/Account/Shared/PasskeySubmit.razor.js"]" type="module"></script>
+    }
+</body>
+
+</html>
+
+@code {
+    // The app runs entirely in the browser (and later inside the mobile app), so it is not
+    // prerendered on the server. Account pages opt out and are rendered on the server instead.
+    // Each kind of page is always reached with a full page load, so each loads only its own styles.
+    private static readonly IComponentRenderMode InteractiveApp = new InteractiveWebAssemblyRenderMode(prerender: false);
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    private IComponentRenderMode PageRenderMode =>
+        HttpContext.AcceptsInteractiveRouting() ? InteractiveApp : null;
+}

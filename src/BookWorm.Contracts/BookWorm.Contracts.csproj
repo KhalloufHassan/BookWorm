@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- API request/response types shared by the server, the web app and (later) the mobile app.
+       Keep this project free of ASP.NET Core dependencies so every client can reference it. -->
+
+</Project>

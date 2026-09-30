@@ -1,0 +1,62 @@
+@* The book's cover image, or a placeholder in one of several warm colours when it has none. *@
+
+@if (Url is not null && !_failed)
+{
+    <div class="bw-cover bw-cover--@Size bw-cover--image" aria-hidden="true">
+        <img src="@Url" alt="" loading="lazy" decoding="async" @onerror="@(() => _failed = true)" />
+    </div>
+}
+else
+{
+    <div class="bw-cover bw-cover--@Size" style="--bw-cover-color: @Color" aria-hidden="true">
+        <div class="bw-cover__title">@Title</div>
+        @if (!string.IsNullOrWhiteSpace(Author))
+        {
+            <div class="bw-cover__author">@Author</div>
+        }
+    </div>
+}
+
+@code {
+    private static readonly string[] Colors =
+    [
+        "#8c4a32", "#5f6f45", "#2f4f5e", "#7a3e4a", "#8a6326", "#44506e", "#5e3d2e", "#35605a",
+    ];
+
+    private bool _failed;
+    private string _lastUrl;
+
+    [Parameter, EditorRequired]
+    public Guid Id { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter]
+    public string Author { get; set; }
+
+    /// <summary>See <see cref="BookSummary.CoverVersion"/>; null shows the placeholder.</summary>
+    [Parameter]
+    public long? CoverVersion { get; set; }
+
+    /// <summary>An image to show instead, e.g. a cover that isn't uploaded yet.</summary>
+    [Parameter]
+    public string PreviewUrl { get; set; }
+
+    /// <summary>small, medium or large.</summary>
+    [Parameter]
+    public string Size { get; set; } = "medium";
+
+    private string Url => PreviewUrl ?? BookWormApiClient.CoverUrl(Id, CoverVersion);
+
+    private string Color => Colors[(uint)Id.GetHashCode() % Colors.Length];
+
+    protected override void OnParametersSet()
+    {
+        if (Url != _lastUrl)
+        {
+            _lastUrl = Url;
+            _failed = false;
+        }
+    }
+}

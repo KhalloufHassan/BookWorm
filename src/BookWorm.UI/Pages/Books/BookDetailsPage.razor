@@ -1,0 +1,301 @@
+@page "/books/{Id:guid}"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject BrowseState Browse
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@(_book?.Title ?? "Book") · BookWorm</PageTitle>
+
+<MudButton Href="books" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" Class="mb-4">Books</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_book is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <section class="bw-book">
+        <div class="bw-book__cover">
+            <BookCoverMenu Book="_book" Changed="LoadAsync" />
+        </div>
+        <div class="bw-book__main">
+            <MudText Typo="Typo.h3" HtmlTag="h1" Class="bw-book__title">@_book.Title</MudText>
+            <div class="bw-book__authors">
+                @if (_book.Authors.Count == 0)
+                {
+                    <span>Unknown author</span>
+                }
+                else
+                {
+                    <span>by </span>
+                    @foreach (var (author, index) in _book.Authors.Select((author, index) => (author, index)))
+                    {
+                        if (index > 0)
+                        {
+                            <span>, </span>
+                        }
+                        <a href="@($"authors/{author.Id}")">@author.Name</a>
+                    }
+                }
+            </div>
+
+            <div class="bw-book__facts">
+                <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" AriaLabel="Change status">
+                    <ActivatorContent>
+                        <StatusChip Status="_book.Status" OnClick="@(() => context.ToggleAsync())" />
+                    </ActivatorContent>
+                    <ChildContent>
+                        @foreach (var status in Labels.BookStatuses)
+                        {
+                            <MudMenuItem Icon="@Labels.IconFor(status)" OnClick="@(() => ChangeStatusAsync(status))" Disabled="@(status == _book.Status)">
+                                @Labels.For(status)
+                            </MudMenuItem>
+                        }
+                    </ChildContent>
+                </MudMenu>
+                <RatingStars Value="_book.Rating" Large="true" ShowUnrated="true" />
+                @if (_book.OriginalPublicationDate is { } published)
+                {
+                    <span class="bw-muted">First published @Labels.Date(published)</span>
+                }
+            </div>
+
+            @if (_book.Tags.Count > 0)
+            {
+                <div class="bw-book__tags">
+                    @foreach (var tag in _book.Tags)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined"
+                                 Icon="@Icons.Material.Rounded.Sell" OnClick="@(() => ShowTag(tag))">@tag.Name</MudChip>
+                    }
+                </div>
+            }
+
+            <div class="bw-book__actions">
+                @if (_book.Files.Count > 0)
+                {
+                    <MudButton Href="@($"books/{_book.Id}/read")" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.MenuBook">
+                        @(CurrentProgress is { } progress && progress > 0 ? $"Continue reading · {Labels.Percent(progress)}" : "Read")
+                    </MudButton>
+                }
+                <MudButton Href="@($"books/{_book.Id}/edit")" Variant="@(_book.Files.Count > 0 ? Variant.Outlined : Variant.Filled)" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit">Edit</MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Rounded.DeleteOutline" OnClick="DeleteAsync">Delete</MudButton>
+            </div>
+        </div>
+    </section>
+
+    <div class="bw-book__sections">
+        <MudPaper Elevation="0" Class="bw-section">
+            <div class="bw-section__header">
+                <MudText Typo="Typo.h5" HtmlTag="h2">Notes</MudText>
+                <div>
+                    @if (!string.IsNullOrWhiteSpace(_book.Notes) && _book.HighlightCount == 0)
+                    {
+                        <MudIconButton Href="@BookWormApiClient.NotesUrl(_book.Id)" Icon="@Icons.Material.Rounded.Download" aria-label="Download the notes as Markdown" />
+                    }
+                    <MudButton Href="@($"books/{_book.Id}/edit")" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.EditNote">Edit notes</MudButton>
+                </div>
+            </div>
+            <MarkdownView Markdown="@_book.Notes">
+                <Empty>
+                    <MudText Color="Color.Secondary">No notes yet. Write your thoughts in Markdown when you edit the book.</MudText>
+                </Empty>
+            </MarkdownView>
+        </MudPaper>
+
+        <MudPaper Elevation="0" Class="bw-section">
+            <div class="bw-section__header">
+                <MudText Typo="Typo.h5" HtmlTag="h2">Reads</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="@(() => EditReadAsync(null))">Add read</MudButton>
+            </div>
+            @if (_book.Reads.Count == 0)
+            {
+                <MudText Color="Color.Secondary">No reads recorded yet. Add one when you start the book, or to log a past read.</MudText>
+            }
+            else
+            {
+                <ul class="bw-reads">
+                    @foreach (var read in _book.Reads)
+                    {
+                        <li class="bw-read">
+                            <StatusChip ReadStatus="read.Status" />
+                            <div class="bw-read__dates">
+                                <span>@ReadDates(read)</span>
+                                @if (Duration(read) is { } duration)
+                                {
+                                    <span class="bw-muted">@duration</span>
+                                }
+                                @if (read.Status == ReadStatus.CurrentlyReading && read.Progress is { } readProgress)
+                                {
+                                    <span class="bw-read__progress">
+                                        <MudProgressLinear Value="@(readProgress * 100)" Color="Color.Primary" Rounded="true" Size="Size.Small" />
+                                        <span class="bw-muted">@Labels.Percent(readProgress)@(read.LastOpenedAt is { } opened ? $" · last read {Labels.DateTime(opened)}" : "")</span>
+                                    </span>
+                                }
+                            </div>
+                            <div class="bw-read__actions">
+                                <MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" aria-label="Edit read" OnClick="@(() => EditReadAsync(read))" />
+                                <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="Delete read" OnClick="@(() => DeleteReadAsync(read))" />
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </MudPaper>
+
+        <BookHighlightsSection Book="_book" />
+        <BookFilesSection Book="_book" Changed="LoadAsync" />
+    </div>
+}
+
+@code {
+    private BookDetails _book;
+    private string _error;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private double? CurrentProgress => _book?.Reads
+        .Where(r => r.Status == ReadStatus.CurrentlyReading && r.Progress is not null)
+        .OrderByDescending(r => r.LastOpenedAt)
+        .Select(r => r.Progress)
+        .FirstOrDefault();
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _book = await Api.GetBookAsync(Id);
+            _error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private async Task ChangeStatusAsync(BookStatus status)
+    {
+        if (_book is null)
+        {
+            return;
+        }
+
+        var update = _book.ToUpdateRequest();
+        update.Status = status;
+        try
+        {
+            _book = await Api.UpdateBookAsync(_book.Id, update);
+            Snackbar.Add($"Marked as {Labels.For(status).ToLowerInvariant()}.", Severity.Success);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+            await LoadAsync();
+        }
+    }
+
+    private void ShowTag(TagRef tag)
+    {
+        Browse.ShowBooksWithTag(tag.Id);
+        Navigation.NavigateTo("books");
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_book is null)
+        {
+            return;
+        }
+
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Delete this book?",
+            $"“{_book.Title}” will be deleted with its reads, notes, highlights, files and cover. This can't be undone.",
+            yesText: "Delete", cancelText: "Keep it");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteBookAsync(_book.Id);
+            Snackbar.Add($"Deleted “{_book.Title}”.", Severity.Success);
+            Navigation.NavigateTo("books");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+
+    private async Task EditReadAsync(ReadDetails read)
+    {
+        var parameters = new DialogParameters<ReadDialog>
+        {
+            { d => d.BookId, Id },
+            { d => d.Read, read },
+        };
+        var dialog = await Dialogs.ShowAsync<ReadDialog>(read is null ? "Add a read" : "Edit read", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteReadAsync(ReadDetails read)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete this read?", ReadDates(read), yesText: "Delete", cancelText: "Keep it");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteReadAsync(Id, read.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+
+    private static string ReadDates(ReadDetails read)
+    {
+        var started = read.StartedAt is { } s ? $"Started {Labels.DateTime(s)}" : "Start not recorded";
+        var ended = read.FinishedAt is { } f
+            ? read.Status == ReadStatus.Skipped ? $" · stopped {Labels.DateTime(f)}" : $" · finished {Labels.DateTime(f)}"
+            : "";
+        return started + ended;
+    }
+
+    private static string Duration(ReadDetails read)
+    {
+        if (read.StartedAt is not { } started)
+        {
+            return null;
+        }
+
+        var end = read.FinishedAt ?? DateTimeOffset.Now;
+        var days = Math.Max(0, (int)Math.Floor((end - started).TotalDays));
+        var text = days switch
+        {
+            0 => "less than a day",
+            1 => "1 day",
+            _ => $"{days} days",
+        };
+        return read.FinishedAt is null ? $"{text} so far" : text;
+    }
+}

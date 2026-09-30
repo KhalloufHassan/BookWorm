@@ -1,0 +1,99 @@
+@* The book's cover, with a menu to upload one, take one from a book file, or remove it. *@
+@inject BrowserFiles Files
+@inject BookWormApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<MudMenu AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" AriaLabel="Change the cover" Class="bw-cover-menu">
+    <ActivatorContent>
+        <button type="button" class="bw-cover-button" @onclick="@(() => context.ToggleAsync())" disabled="@_busy" aria-label="Change the cover">
+            <BookCover Id="Book.Id" Title="@Book.Title" Author="@Book.Authors.FirstOrDefault()?.Name" CoverVersion="Book.CoverVersion" Size="large" />
+            <span class="bw-cover-button__hint"><MudIcon Icon="@Icons.Material.Rounded.PhotoCamera" Size="Size.Small" /> @(_busy ? "Saving…" : "Change cover")</span>
+        </button>
+    </ActivatorContent>
+    <ChildContent>
+        <MudMenuItem Icon="@Icons.Material.Rounded.Image" OnClick="UploadImageAsync">Upload an image</MudMenuItem>
+        @foreach (var file in Book.Files.OrderBy(f => BookFormats.ReadingPreference(f.Format)))
+        {
+            <MudMenuItem Icon="@Icons.Material.Rounded.MenuBook" OnClick="@(() => UseFileCoverAsync(file))">Use the cover from the @BookFormats.Label(file.Format) file</MudMenuItem>
+        }
+        @if (Book.CoverVersion is not null)
+        {
+            <MudMenuItem Icon="@Icons.Material.Rounded.HideImage" OnClick="RemoveAsync">Remove the cover</MudMenuItem>
+        }
+    </ChildContent>
+</MudMenu>
+
+@code {
+    private bool _busy;
+
+    [Parameter, EditorRequired]
+    public BookDetails Book { get; set; }
+
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private async Task UploadImageAsync()
+    {
+        var picked = await Files.PickAsync("image/jpeg,image/png,image/webp,image/gif");
+        if (picked is null)
+        {
+            return;
+        }
+
+        string prepared = null;
+        await RunAsync(async () =>
+        {
+            prepared = await Files.PrepareCoverAsync(picked.Key);
+            await Files.UploadAsync<CoverDetails>(prepared, BookWormApiClient.CoverUploadUrl(Book.Id));
+            Snackbar.Add("Cover updated.", Severity.Success);
+        });
+        await Files.ReleaseAsync(picked.Key);
+        await Files.ReleaseAsync(prepared);
+    }
+
+    private async Task UseFileCoverAsync(BookFileDetails file)
+    {
+        string coverKey = null;
+        await RunAsync(async () =>
+        {
+            coverKey = await Files.CoverFromBookFileAsync(Book.Id, file);
+            if (coverKey is null)
+            {
+                Snackbar.Add($"The {BookFormats.Label(file.Format)} file has no cover.", Severity.Info);
+                return;
+            }
+
+            await Files.UploadAsync<CoverDetails>(coverKey, BookWormApiClient.CoverUploadUrl(Book.Id));
+            Snackbar.Add("Cover updated.", Severity.Success);
+        });
+        await Files.ReleaseAsync(coverKey);
+    }
+
+    private async Task RemoveAsync()
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Remove the cover?", "The book gets its plain coloured cover back.", yesText: "Remove", cancelText: "Keep it");
+        if (confirmed == true)
+        {
+            await RunAsync(() => Api.DeleteCoverAsync(Book.Id));
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try
+        {
+            await action();
+            await Changed.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or Microsoft.JSInterop.JSException)
+        {
+            Snackbar.Add(ex is Microsoft.JSInterop.JSException js ? js.Message.Split('\n')[0] : ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

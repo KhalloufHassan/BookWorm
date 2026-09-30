@@ -1,0 +1,103 @@
+@* Pick a book's tags from your tags; new ones can be created on the spot. *@
+@inject BookWormApiClient Api
+@inject ISnackbar Snackbar
+
+<div class="bw-picker">
+    <MudAutocomplete @ref="_search" T="PickOption" Label="Tags" Placeholder="Type to add a tag"
+                     SearchFunc="SearchAsync" ToStringFunc="@(option => option?.Name ?? "")" ValueChanged="AddAsync"
+                     DebounceInterval="150" MinCharacters="0" CoerceText="false" ResetValueOnEmptyText="true"
+                     Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Clearable="true"
+                     AdornmentIcon="@Icons.Material.Rounded.Sell">
+        <ItemTemplate Context="option">
+            @if (option.IsNew)
+            {
+                <MudText><MudIcon Icon="@Icons.Material.Rounded.Add" Size="Size.Small" Class="mr-2" />Create tag “@option.Name”</MudText>
+            }
+            else
+            {
+                <MudText>@option.Name</MudText>
+            }
+        </ItemTemplate>
+    </MudAutocomplete>
+
+    @if (Value.Count > 0)
+    {
+        <div class="bw-picker__chips">
+            @foreach (var tag in Value)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined"
+                         OnClose="@(() => RemoveAsync(tag))">@tag.Name</MudChip>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private MudAutocomplete<PickOption> _search;
+    private List<TagSummary> _allTags;
+
+    [Parameter]
+    public List<TagRef> Value { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<List<TagRef>> ValueChanged { get; set; }
+
+    private async Task<IEnumerable<PickOption>> SearchAsync(string text, CancellationToken cancellationToken)
+    {
+        _allTags ??= await Api.GetTagsAsync(cancellationToken: cancellationToken);
+        var name = text?.Trim() ?? "";
+
+        var options = _allTags
+            .Where(t => Value.All(chosen => chosen.Id != t.Id))
+            .Where(t => name.Length == 0 || t.Name.Contains(name, StringComparison.CurrentCultureIgnoreCase))
+            .Take(12)
+            .Select(t => new PickOption(t.Id, t.Name))
+            .ToList();
+
+        if (name.Length > 0 && !_allTags.Any(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            options.Add(new PickOption(null, name));
+        }
+
+        return options;
+    }
+
+    private async Task AddAsync(PickOption option)
+    {
+        if (option is null)
+        {
+            return;
+        }
+
+        try
+        {
+            TagRef tag;
+            if (option.Id is { } id)
+            {
+                tag = new TagRef(id, option.Name);
+            }
+            else
+            {
+                var created = await Api.CreateTagAsync(new CreateTagRequest { Name = option.Name });
+                _allTags?.Add(created);
+                tag = new TagRef(created.Id, created.Name);
+            }
+
+            if (Value.All(t => t.Id != tag.Id))
+            {
+                await ValueChanged.InvokeAsync([.. Value, tag]);
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+
+        if (_search is not null)
+        {
+            await _search.ClearAsync();
+        }
+    }
+
+    private Task RemoveAsync(TagRef tag) => ValueChanged.InvokeAsync(Value.Where(t => t.Id != tag.Id).ToList());
+}

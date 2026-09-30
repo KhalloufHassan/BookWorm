@@ -1,0 +1,394 @@
+/*
+ * Styles for the server-rendered pages: first-run setup, login and account settings.
+ * Those pages come from the ASP.NET Core Identity template, so this sheet styles the
+ * handful of Bootstrap class names they use, in BookWorm's own warm look.
+ */
+
+:root {
+    --bw-background: #f7f1e6;
+    --bw-surface: #fffbf4;
+    --bw-text: #3b2f25;
+    --bw-text-muted: #7a6a5b;
+    --bw-primary: #b5563a;
+    --bw-primary-hover: #9c472e;
+    --bw-primary-contrast: #fffbf4;
+    --bw-danger: #b3261e;
+    --bw-success: #4f7a4a;
+    --bw-warning: #a36f1f;
+    --bw-info: #4f6d7a;
+    --bw-line: #e6dccb;
+    --bw-input: #fffdf9;
+    --bw-shadow: 0 1px 2px rgba(59, 47, 37, 0.06), 0 8px 24px rgba(59, 47, 37, 0.08);
+    --bw-radius: 10px;
+    --bw-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --bw-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+}
+
+:root[data-theme="dark"] {
+    --bw-background: #1e1814;
+    --bw-surface: #2a221c;
+    --bw-text: #f1e6d6;
+    --bw-text-muted: #bfae99;
+    --bw-primary: #e0915f;
+    --bw-primary-hover: #eaa57a;
+    --bw-primary-contrast: #1e1814;
+    --bw-danger: #f2877e;
+    --bw-success: #9cc190;
+    --bw-warning: #e3b45a;
+    --bw-info: #9bbccb;
+    --bw-line: #3d3229;
+    --bw-input: #231c17;
+    --bw-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bw-background);
+    color: var(--bw-text);
+    font-family: var(--bw-sans);
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+h1, h2, h3, h4, .h3 {
+    font-family: var(--bw-serif);
+    font-weight: 600;
+    line-height: 1.25;
+    margin: 0 0 0.75rem;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3, .h3 { font-size: 1.5rem; }
+h4 { font-size: 1.2rem; }
+
+p { margin: 0 0 1rem; }
+
+a, .btn-link {
+    color: var(--bw-primary);
+}
+
+a:hover, .btn-link:hover {
+    color: var(--bw-primary-hover);
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--bw-line);
+    margin: 1.5rem 0;
+}
+
+kbd, code {
+    font-family: ui-monospace, "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
+    background: var(--bw-background);
+    border: 1px solid var(--bw-line);
+    border-radius: 6px;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.95em;
+    color: var(--bw-text);
+}
+
+/* Layout: the template's grid columns simply stack inside the page card. */
+
+.row { display: flex; flex-direction: column; gap: 1rem; }
+.row > * { min-width: 0; }
+.d-flex { display: flex; }
+.flex-column { flex-direction: column; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.w-100 { width: 100%; }
+.p-0 { padding: 0 !important; }
+.py-4 { padding-top: 2rem; padding-bottom: 2rem; }
+.mb-0 { margin-bottom: 0 !important; }
+.mb-3 { margin-bottom: 1rem; }
+.mt-3 { margin-top: 1rem; }
+.mt-4 { margin-top: 1.5rem; }
+.small { font-size: 0.875rem; }
+.text-secondary { color: var(--bw-text-muted); }
+.text-danger { color: var(--bw-danger); }
+
+/* Page frame */
+
+.account-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1.5rem;
+    background: var(--bw-surface);
+    border-bottom: 1px solid var(--bw-line);
+}
+
+.account-brand {
+    font-family: var(--bw-serif);
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--bw-text);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.account-brand img {
+    width: 1.85rem;
+    height: 1.85rem;
+}
+
+.account-brand:hover { color: var(--bw-text); }
+
+.account-nav {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.account-nav form { margin: 0; }
+
+.account-main {
+    padding: 2.5rem 1rem 3rem;
+}
+
+.account-card {
+    max-width: 520px;
+    margin: 0 auto;
+    background: var(--bw-surface);
+    border: 1px solid var(--bw-line);
+    border-radius: calc(var(--bw-radius) + 6px);
+    box-shadow: var(--bw-shadow);
+    padding: 2rem;
+}
+
+.account-card:has(.manage-layout) {
+    max-width: 1040px;
+}
+
+.manage-layout__body {
+    display: grid;
+    gap: 1.5rem;
+}
+
+@media (min-width: 800px) {
+    .manage-layout__body { grid-template-columns: 220px 1fr; gap: 2.5rem; }
+}
+
+/* Forms */
+
+.form-floating {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.form-floating > label,
+.form-label,
+.control-label {
+    order: -1;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--bw-text);
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.7rem 0.85rem;
+    font: inherit;
+    color: var(--bw-text);
+    background: var(--bw-input);
+    border: 1px solid var(--bw-line);
+    border-radius: var(--bw-radius);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--bw-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--bw-primary) 25%, transparent);
+}
+
+.form-control:disabled {
+    color: var(--bw-text-muted);
+    background: var(--bw-background);
+}
+
+.form-control::placeholder {
+    color: transparent; /* The labels already say what goes in each field. */
+}
+
+.checkbox label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 400;
+}
+
+.form-check-input {
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: var(--bw-primary);
+}
+
+.validation-message,
+.validation-errors {
+    color: var(--bw-danger);
+    font-size: 0.875rem;
+}
+
+.validation-errors {
+    padding-left: 1.25rem;
+}
+
+/* Buttons */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.4;
+    border: 1px solid transparent;
+    border-radius: var(--bw-radius);
+    background: transparent;
+    color: var(--bw-text);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn-lg { padding: 0.75rem 1.25rem; font-size: 1.05rem; }
+
+.btn-primary {
+    background: var(--bw-primary);
+    color: var(--bw-primary-contrast);
+}
+
+.btn-primary:hover {
+    background: var(--bw-primary-hover);
+    color: var(--bw-primary-contrast);
+}
+
+.btn-danger {
+    background: transparent;
+    color: var(--bw-danger);
+    border-color: var(--bw-danger);
+}
+
+.btn-danger:hover {
+    background: var(--bw-danger);
+    color: var(--bw-surface);
+}
+
+.btn-link {
+    background: none;
+    border: 0;
+    padding: 0.25rem 0.5rem;
+    font-weight: 500;
+}
+
+.btn + .btn { margin-left: 0.5rem; }
+
+/* Messages */
+
+.alert {
+    padding: 0.8rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: var(--bw-radius);
+    border: 1px solid;
+    background: var(--bw-surface);
+}
+
+.alert-success { color: var(--bw-success); border-color: var(--bw-success); }
+.alert-danger { color: var(--bw-danger); border-color: var(--bw-danger); }
+.alert-warning { color: var(--bw-warning); border-color: var(--bw-warning); }
+.alert-info { color: var(--bw-info); border-color: var(--bw-info); }
+
+.alert p:last-child { margin-bottom: 0; }
+
+/* Account settings menu */
+
+.nav {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-pills {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.nav-link {
+    display: block;
+    padding: 0.55rem 0.85rem;
+    border-radius: var(--bw-radius);
+    color: var(--bw-text);
+    text-decoration: none;
+}
+
+.nav-link:hover {
+    background: color-mix(in srgb, var(--bw-primary) 10%, transparent);
+    color: var(--bw-text);
+}
+
+.nav-link.active {
+    background: color-mix(in srgb, var(--bw-primary) 16%, transparent);
+    color: var(--bw-primary);
+    font-weight: 600;
+}
+
+/* Tables and lists */
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+}
+
+.table td, .table th {
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid var(--bw-line);
+    vertical-align: middle;
+}
+
+.list { padding-left: 1.25rem; }
+.list li { margin-bottom: 0.75rem; }
+
+.recovery-code {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* First-run setup: restoring a backup */
+
+.setup-backups {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.setup-backups li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--bw-line);
+    border-radius: var(--bw-radius);
+    overflow-wrap: anywhere;
+}
+
+.setup-upload .btn { width: 100%; }
+
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

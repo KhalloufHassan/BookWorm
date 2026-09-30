@@ -1,0 +1,110 @@
+@inject BookWormApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="user-form">
+            <DataAnnotationsValidator />
+            <ServerValidation @ref="_serverValidation" />
+            <div class="bw-dialog-fields">
+                <MudTextField Label="Username" @bind-Value="_form.UserName" For="@(() => _form.UserName)" Variant="Variant.Outlined"
+                              Disabled="@(User is not null)" AutoFocus="@(User is null)" autocomplete="off"
+                              HelperText="@(User is null ? "Letters, digits and - . _ @ +" : "Usernames can't be changed")" />
+                <MudTextField Label="Email (optional)" @bind-Value="_form.Email" For="@(() => _form.Email)" Variant="Variant.Outlined" autocomplete="off" />
+                @if (User is null)
+                {
+                    <MudTextField Label="Password" @bind-Value="_form.Password" For="@(() => _form.Password)" InputType="InputType.Password"
+                                  Variant="Variant.Outlined" autocomplete="new-password"
+                                  HelperText="@($"At least {ApiLimits.PasswordMinLength} characters. Share it with the person; they can change it later.")" />
+                }
+                <MudSwitch T="bool" @bind-Value="_form.IsAdmin" Color="Color.Primary" Disabled="@IsSelf"
+                           Label="Administrator (can manage user accounts, not other people's libraries)" />
+                @if (IsSelf)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">You can't remove your own administrator rights.</MudText>
+                }
+            </div>
+            @if (_serverValidation?.GeneralErrors.Count > 0 || _error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4">@(_error ?? string.Join(" ", _serverValidation.GeneralErrors))</MudAlert>
+            }
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton ButtonType="ButtonType.Submit" form="user-form" Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving">
+            @(User is null ? "Create account" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly UserForm _form = new();
+    private ServerValidation _serverValidation;
+    private string _error;
+    private bool _saving;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    /// <summary>The account to edit, or null to create one.</summary>
+    [Parameter]
+    public AdminUser User { get; set; }
+
+    [Parameter]
+    public bool IsSelf { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (User is not null)
+        {
+            _form.UserName = User.UserName;
+            _form.Email = User.Email;
+            _form.IsAdmin = User.IsAdmin;
+            _form.Password = "unused-when-editing";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            var email = string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email.Trim();
+            AdminUser saved = User is null
+                ? await Api.CreateUserAsync(new CreateUserRequest { UserName = _form.UserName.Trim(), Email = email, Password = _form.Password, IsAdmin = _form.IsAdmin })
+                : await Api.UpdateUserAsync(User.Id, new UpdateUserRequest { Email = email, IsAdmin = _form.IsAdmin });
+            MudDialog.Close(DialogResult.Ok(saved));
+        }
+        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest && ex.Errors.Count > 0)
+        {
+            _serverValidation?.Show(ex.Errors);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class UserForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Choose a username.")]
+        [System.ComponentModel.DataAnnotations.StringLength(ApiLimits.UserNameMaxLength)]
+        public string UserName { get; set; } = "";
+
+        [OptionalEmail]
+        [System.ComponentModel.DataAnnotations.StringLength(ApiLimits.EmailMaxLength)]
+        public string Email { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Choose a password.")]
+        [System.ComponentModel.DataAnnotations.StringLength(ApiLimits.PasswordMaxLength, MinimumLength = ApiLimits.PasswordMinLength,
+            ErrorMessage = "The password must be at least {2} characters long.")]
+        public string Password { get; set; } = "";
+
+        public bool IsAdmin { get; set; }
+    }
+}

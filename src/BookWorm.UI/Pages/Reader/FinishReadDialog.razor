@@ -1,0 +1,29 @@
+@* Offered when the reader reaches the end of the book. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudText>You reached the end of “@Title”. Mark this read as finished?</MudText>
+        @if (BookStatus != BookStatus.Finished)
+        {
+            <MudCheckBox T="bool" @bind-Value="_updateBook" Color="Color.Primary" Class="mt-2" Label="Also mark the book as Finished" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Not yet</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.TaskAlt"
+                   OnClick="@(() => MudDialog.Close(DialogResult.Ok(_updateBook && BookStatus != BookStatus.Finished)))">Mark as finished</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _updateBook = true;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "";
+
+    [Parameter]
+    public BookStatus BookStatus { get; set; }
+}

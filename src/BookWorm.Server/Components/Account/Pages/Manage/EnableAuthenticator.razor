@@ -1,0 +1,190 @@
+@page "/Account/Manage/EnableAuthenticator"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using BookWorm.Server.Data
+
+@inject UserManager<AppUser> UserManager
+@inject UrlEncoder UrlEncoder
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<EnableAuthenticator> Logger
+
+<PageTitle>Configure authenticator app</PageTitle>
+
+@if (recoveryCodes is not null)
+{
+    <ShowRecoveryCodes RecoveryCodes="recoveryCodes.ToArray()" StatusMessage="@message" />
+}
+else
+{
+    <StatusMessage Message="@message" />
+    <h3>Set up an authenticator app</h3>
+    <div>
+        <p>After this, logging in asks for your password and a 6-digit code from an app on your phone.</p>
+        <ol class="list">
+            <li>
+                <p>
+                    Install an authenticator app if you don't have one, for example Aegis or 2FAS (open source),
+                    Google Authenticator, Microsoft Authenticator, or the one built into your password manager.
+                </p>
+            </li>
+            <li>
+                <p><strong>On the phone with the app:</strong> tap the button to add BookWorm to it.</p>
+                <p><a class="btn btn-primary" href="@authenticatorUri">Open in authenticator app</a></p>
+                <p>
+                    <strong>Otherwise:</strong> add an account in the app by hand and enter this key
+                    (time-based; spaces and capitals don't matter):
+                </p>
+                <p>
+                    <kbd>@sharedKey</kbd>
+                    <button type="button" class="btn btn-link" data-key="@unformattedKey"
+                            onclick="navigator.clipboard.writeText(this.dataset.key).then(() => this.textContent = 'Copied')">Copy key</button>
+                </p>
+            </li>
+            <li>
+                <p>
+                    The app now shows a 6-digit code for BookWorm that changes every 30 seconds. Enter the current code
+                    to finish.
+                </p>
+                <div class="row">
+                    <div class="col-xl-6">
+                        <EditForm Model="Input" FormName="send-code" OnValidSubmit="OnValidSubmitAsync" method="post">
+                            <DataAnnotationsValidator />
+                            <div class="form-floating mb-3">
+                                <InputText @bind-Value="Input.Code" id="Input.Code" class="form-control" autocomplete="one-time-code" inputmode="numeric" placeholder="Enter the code" />
+                                <label for="Input.Code" class="control-label form-label">Code from the app</label>
+                                <ValidationMessage For="() => Input.Code" class="text-danger" />
+                            </div>
+                            <button type="submit" class="w-100 btn btn-lg btn-primary">Verify</button>
+                            <ValidationSummary class="text-danger" role="alert" />
+                        </EditForm>
+                    </div>
+                </div>
+            </li>
+        </ol>
+    </div>
+}
+
+@code {
+    private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
+
+    private string message;
+    private AppUser user;
+    private string sharedKey;
+    private string unformattedKey;
+    private string authenticatorUri;
+    private IEnumerable<string> recoveryCodes;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+
+        user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        await LoadSharedKeyAndQrCodeUriAsync(user);
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        // Strip spaces and hyphens
+        var verificationCode = Input.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
+
+        var is2faTokenValid = await UserManager.VerifyTwoFactorTokenAsync(
+            user, UserManager.Options.Tokens.AuthenticatorTokenProvider, verificationCode);
+
+        if (!is2faTokenValid)
+        {
+            message = "Error: Verification code is invalid.";
+            return;
+        }
+
+        await UserManager.SetTwoFactorEnabledAsync(user, true);
+        var userId = await UserManager.GetUserIdAsync(user);
+        Logger.LogInformation("User with ID '{UserId}' has enabled 2FA with an authenticator app.", userId);
+
+        message = "Your authenticator app has been verified.";
+
+        if (await UserManager.CountRecoveryCodesAsync(user) == 0)
+        {
+            recoveryCodes = await UserManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+        }
+        else
+        {
+            RedirectManager.RedirectToWithStatus("Account/Manage/TwoFactorAuthentication", message, HttpContext);
+        }
+    }
+
+    private async ValueTask LoadSharedKeyAndQrCodeUriAsync(AppUser user)
+    {
+        // Load the authenticator key and the otpauth:// link that adds it to an authenticator app
+        var unformattedKey = await UserManager.GetAuthenticatorKeyAsync(user);
+        if (string.IsNullOrEmpty(unformattedKey))
+        {
+            await UserManager.ResetAuthenticatorKeyAsync(user);
+            unformattedKey = await UserManager.GetAuthenticatorKeyAsync(user);
+        }
+
+        this.unformattedKey = unformattedKey;
+        sharedKey = FormatKey(unformattedKey);
+
+        // Accounts don't need an email address, so the authenticator entry is labelled with the username.
+        var userName = await UserManager.GetUserNameAsync(user);
+        authenticatorUri = GenerateAuthenticatorUri(userName, unformattedKey);
+    }
+
+    private string FormatKey(string unformattedKey)
+    {
+        var result = new StringBuilder();
+        int currentPosition = 0;
+        while (currentPosition + 4 < unformattedKey.Length)
+        {
+            result.Append(unformattedKey.AsSpan(currentPosition, 4)).Append(' ');
+            currentPosition += 4;
+        }
+        if (currentPosition < unformattedKey.Length)
+        {
+            result.Append(unformattedKey.AsSpan(currentPosition));
+        }
+
+        return result.ToString().ToLowerInvariant();
+    }
+
+    private string GenerateAuthenticatorUri(string accountName, string unformattedKey)
+    {
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            AuthenticatorUriFormat,
+            UrlEncoder.Encode("BookWorm"),
+            UrlEncoder.Encode(accountName),
+            unformattedKey);
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [StringLength(7, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [DataType(DataType.Text)]
+        [Display(Name = "Verification Code")]
+        public string Code { get; set; } = "";
+    }
+}

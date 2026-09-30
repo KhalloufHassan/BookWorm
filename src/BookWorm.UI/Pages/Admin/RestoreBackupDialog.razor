@@ -1,0 +1,29 @@
+@* Confirms a restore, which replaces everyone's data. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-2">
+            <strong>Everything on this server is replaced by the backup “@Name”</strong>: every account, library, file,
+            highlight and setting. Anything added or changed since the backup was made is lost.
+        </MudText>
+        <MudText Class="mb-2">
+            BookWorm restarts to do this, and everyone is signed out. It can take a few minutes for large libraries.
+        </MudText>
+        <MudCheckBox T="bool" @bind-Value="_understood" Color="Color.Error" Label="I understand that all current data will be replaced" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="!_understood" StartIcon="@Icons.Material.Rounded.SettingsBackupRestore"
+                   OnClick="@(() => MudDialog.Close(DialogResult.Ok(true)))">Restore</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _understood;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public string Name { get; set; } = "";
+}

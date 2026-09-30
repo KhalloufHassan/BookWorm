@@ -1,0 +1,58 @@
+@* Writes or edits the note on a highlight. Returns the note (null when emptied). *@
+
+<MudDialog>
+    <DialogContent>
+        <blockquote class="bw-quote" style="--bw-swatch: @Labels.Css(Tint)">@Excerpt</blockquote>
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" TabPanelsClass="pt-3" Class="bw-notes-tabs">
+            <MudTabPanel Text="Note" Icon="@Icons.Material.Rounded.EditNote">
+                <MudTextField T="string" @bind-Value="_note" Lines="8" Variant="Variant.Outlined" AutoFocus="true"
+                              Counter="ApiLimits.HighlightNoteMaxLength" MaxLength="ApiLimits.HighlightNoteMaxLength"
+                              Placeholder="What does this passage make you think? Markdown works." />
+            </MudTabPanel>
+            <MudTabPanel Text="Preview" Icon="@Icons.Material.Rounded.Visibility">
+                <MarkdownView Markdown="@_note">
+                    <Empty><MudText Color="Color.Secondary">Nothing to preview yet.</MudText></Empty>
+                </MarkdownView>
+            </MudTabPanel>
+        </MudTabs>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="@(() => MudDialog.Close(DialogResult.Ok(string.IsNullOrWhiteSpace(_note) ? null : _note)))">Save note</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _note;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public string Text { get; set; } = "";
+
+    [Parameter]
+    public string Note { get; set; }
+
+    [Parameter]
+    public HighlightColor Tint { get; set; }
+
+    private string Excerpt => Text.Length > 400 ? Text[..400] + "…" : Text;
+
+    protected override void OnInitialized() => _note = Note;
+
+    public static async Task<(bool Saved, string Note)> ShowAsync(IDialogService dialogs, string text, string note, HighlightColor color)
+    {
+        var parameters = new DialogParameters<HighlightNoteDialog>
+        {
+            { d => d.Text, text },
+            { d => d.Note, note },
+            { d => d.Tint, color },
+        };
+        var dialog = await dialogs.ShowAsync<HighlightNoteDialog>(note is null ? "Add a note" : "Edit note", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        return result is { Canceled: false } ? (true, result.Data as string) : (false, null);
+    }
+}

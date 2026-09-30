@@ -1,0 +1,301 @@
+@page "/books/{Id:guid}/read"
+@layout ReaderLayout
+@attribute [Authorize]
+@implements IAsyncDisposable
+
+<PageTitle>@(_book?.Title ?? "Reading") · BookWorm</PageTitle>
+
+<div class="bw-reader bw-reader--@EffectiveTheme @(_chromeHidden ? "bw-reader--immersive" : "")">
+    <header class="bw-reader__bar">
+        <MudIconButton Href="@($"books/{Id}")" Icon="@Icons.Material.Rounded.ArrowBack" aria-label="Back to the book" />
+        <div class="bw-reader__heading">
+            <div class="bw-reader__title">@_book?.Title</div>
+            @if (!string.IsNullOrEmpty(_chapter))
+            {
+                <div class="bw-reader__chapter">@_chapter</div>
+            }
+        </div>
+        <div class="bw-reader__pages" title="@PageTooltip">@PageText</div>
+        @if (_book is not null && _read is null && _error is null)
+        {
+            <MudTooltip Text="You're browsing: your place is remembered, but no read is recorded.">
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Rounded.PlayArrow"
+                           OnClick="StartReadingAsync" Disabled="@(_starting || _reader is null)" Class="bw-reader__start">
+                    Start reading
+                </MudButton>
+            </MudTooltip>
+        }
+        <div class="bw-reader__tools">
+            @if (IsPdf)
+            {
+                <MudIconButton Icon="@Icons.Material.Rounded.ZoomOut" OnClick="@(() => ZoomAsync(-1))" aria-label="Zoom out" Class="bw-reader__zoom" />
+                <MudIconButton Icon="@Icons.Material.Rounded.ZoomIn" OnClick="@(() => ZoomAsync(1))" aria-label="Zoom in" Class="bw-reader__zoom" />
+            }
+            <MudTooltip Text="@(_settings.IsDark ? "Light pages" : "Dark pages")">
+                <MudIconButton Icon="@(_settings.IsDark ? Icons.Material.Rounded.LightMode : Icons.Material.Rounded.DarkMode)" OnClick="ToggleDarkAsync"
+                               aria-label="@(_settings.IsDark ? "Switch to light pages" : "Switch to dark pages")" />
+            </MudTooltip>
+            <MudTooltip Text="Contents">
+                <MudIconButton Icon="@Icons.Material.Rounded.Toc" OnClick="@(() => OpenPanel(ReaderPanel.Contents))" aria-label="Contents" Disabled="@(_toc.Count == 0)" />
+            </MudTooltip>
+            <MudTooltip Text="Search in the book">
+                <MudIconButton Icon="@Icons.Material.Rounded.Search" OnClick="@(() => OpenPanel(ReaderPanel.Search))" aria-label="Search in the book" />
+            </MudTooltip>
+            <MudTooltip Text="Highlights and notes">
+                <MudBadge Content="@_highlights.Count" Visible="@(_highlights.Count > 0)" Color="Color.Secondary" Overlap="true" Dot="false" Max="999">
+                    <MudIconButton Icon="@Icons.Material.Rounded.BorderColor" OnClick="@(() => OpenPanel(ReaderPanel.Highlights))" aria-label="Highlights and notes" />
+                </MudBadge>
+            </MudTooltip>
+            <MudTooltip Text="Reading settings">
+                <MudIconButton Icon="@Icons.Material.Rounded.FormatSize" OnClick="@(() => OpenPanel(ReaderPanel.Settings))" aria-label="Reading settings" />
+            </MudTooltip>
+            @if (_book?.Files.Count > 1)
+            {
+                <MudMenu Icon="@Icons.Material.Rounded.SwapHoriz" AriaLabel="Read another format" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    @foreach (var file in _book.Files.OrderBy(f => BookFormats.ReadingPreference(f.Format)))
+                    {
+                        <MudMenuItem Disabled="@(file.Id == _file?.Id)" OnClick="@(() => SwitchFileAsync(file))">@BookFormats.Label(file.Format)</MudMenuItem>
+                    }
+                </MudMenu>
+            }
+        </div>
+    </header>
+
+    <main class="bw-reader__stage">
+        <div class="bw-reader__engine" @ref="_host"></div>
+        @if (_error is not null)
+        {
+            <div class="bw-reader__status">
+                <MudAlert Severity="Severity.Error">@_error</MudAlert>
+                <MudButton Href="@($"books/{Id}")" Variant="Variant.Filled" Color="Color.Primary">Back to the book</MudButton>
+            </div>
+        }
+        else if (_opening)
+        {
+            <div class="bw-reader__status">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <MudText>Opening the book…</MudText>
+            </div>
+        }
+    </main>
+
+    <footer class="bw-reader__footer">
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" OnClick="PrevAsync" aria-label="Previous page" Disabled="_reader is null" />
+        <MudSlider T="double" Value="_progress" ValueChanged="OnSliderChangedAsync" Min="0" Max="1" Step="0.001" Immediate="false"
+                   Color="Color.Primary" Class="bw-reader__slider" Disabled="_reader is null" aria-label="Position in the book" />
+        <span class="bw-reader__percent">@Labels.Percent(_progress)</span>
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" OnClick="NextAsync" aria-label="Next page" Disabled="_reader is null" />
+    </footer>
+
+    @if (_selection is { } selection)
+    {
+        <div class="bw-float-menu" style="@FloatStyle(selection.Rect)" @onmousedown:preventDefault="true" role="toolbar" aria-label="Highlight the selection">
+            @foreach (var color in Labels.HighlightColors)
+            {
+                <button type="button" class="bw-swatch" style="--bw-swatch: @Labels.Css(color)" title="@($"Highlight in {color.ToString().ToLowerInvariant()}")"
+                        @onclick="@(() => HighlightSelectionAsync(color, withNote: false))"></button>
+            }
+            <MudIconButton Icon="@Icons.Material.Rounded.EditNote" Size="Size.Small" title="Highlight and add a note" OnClick="@(() => HighlightSelectionAsync(HighlightColor.Yellow, withNote: true))" />
+            <MudIconButton Icon="@Icons.Material.Rounded.ContentCopy" Size="Size.Small" title="Copy" OnClick="CopySelectionAsync" />
+        </div>
+    }
+
+    @if (_clicked is { } clicked)
+    {
+        <div class="bw-float-menu" style="@FloatStyle(clicked.Rect)" role="toolbar" aria-label="Change the highlight">
+            @foreach (var color in Labels.HighlightColors)
+            {
+                <button type="button" class="bw-swatch @(color == clicked.Highlight.Color ? "is-current" : "")" style="--bw-swatch: @Labels.Css(color)"
+                        title="@color" @onclick="@(() => RecolorAsync(clicked.Highlight, color))"></button>
+            }
+            <MudIconButton Icon="@Icons.Material.Rounded.EditNote" Size="Size.Small" title="@(clicked.Highlight.Note is null ? "Add a note" : "Edit the note")" OnClick="@(() => EditNoteAsync(clicked.Highlight))" />
+            <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" title="Delete the highlight" OnClick="@(() => DeleteHighlightAsync(clicked.Highlight))" />
+            <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" title="Close" OnClick="@(() => _clicked = null)" />
+        </div>
+        @if (clicked.Highlight.Note is { } note)
+        {
+            <div class="bw-float-note" style="@NoteStyle(clicked.Rect)">
+                <MarkdownView Markdown="@note" />
+            </div>
+        }
+    }
+
+    <div class="bw-reader__backdrop @(_panelOpen ? "is-open" : "")" @onclick="ClosePanel"></div>
+    <aside class="bw-reader__panel @(_panelOpen ? "is-open" : "")" aria-hidden="@(!_panelOpen)">
+        <div class="bw-reader__panel-header">
+            <MudText Typo="Typo.h6" HtmlTag="h2">@PanelTitle</MudText>
+            <MudIconButton Icon="@Icons.Material.Rounded.Close" OnClick="ClosePanel" aria-label="Close" />
+        </div>
+        <div class="bw-reader__panel-body">
+            @switch (_panel)
+            {
+                case ReaderPanel.Contents:
+                    <nav class="bw-toc">
+                        @foreach (var item in _toc)
+                        {
+                            <button type="button" class="bw-toc__item @(item.Label == _chapter ? "is-current" : "")" style="padding-left: @(0.75 + item.Depth * 1)rem"
+                                    @onclick="@(() => GoToAsync(item.Href))">@item.Label</button>
+                        }
+                    </nav>
+                    break;
+
+                case ReaderPanel.Search:
+                    <form class="bw-reader__search" @onsubmit="SearchAsync" @onsubmit:preventDefault="true">
+                        <MudTextField T="string" @bind-Value="_searchQuery" Placeholder="Words to look for" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Rounded.Search" OnAdornmentClick="SearchAsync" AutoFocus="true" Immediate="true" />
+                    </form>
+                    @if (_searching)
+                    {
+                        <MudProgressLinear Value="@(_searchProgress * 100)" Color="Color.Primary" Class="my-2" />
+                    }
+                    @if (_searchDone && _searchResults.Count == 0)
+                    {
+                        <MudText Color="Color.Secondary" Class="mt-3">Not found in this book.</MudText>
+                    }
+                    else if (_searchResults.Count > 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="my-2">@Labels.Count(_searchResults.Count, "result")@(_searchResults.Count >= 500 ? " (showing the first 500)" : "")</MudText>
+                        <ul class="bw-search-results">
+                            @foreach (var hit in _searchResults)
+                            {
+                                <li>
+                                    <button type="button" @onclick="@(() => GoToAsync(hit.Location, closePanel: false))">
+                                        @if (!string.IsNullOrEmpty(hit.Label))
+                                        {
+                                            <span class="bw-search-results__label">@hit.Label</span>
+                                        }
+                                        <span>@hit.Before<mark>@hit.Match</mark>@hit.After</span>
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    break;
+
+                case ReaderPanel.Highlights:
+                    @if (_highlights.Count == 0)
+                    {
+                        <MudText Color="Color.Secondary">Select text in the book to highlight it and add notes.</MudText>
+                    }
+                    else
+                    {
+                        <div class="bw-panel-actions">
+                            <MudButton Href="@BookWormApiClient.NotesUrl(Id)" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.Download" Size="Size.Small">Download as Markdown</MudButton>
+                        </div>
+                        <ul class="bw-highlight-list">
+                            @foreach (var highlight in _highlights)
+                            {
+                                var here = highlight.FileId == _file?.Id && highlight.State == HighlightState.Anchored;
+                                <li class="bw-highlight" style="--bw-swatch: @Labels.Css(highlight.Color)">
+                                    <button type="button" class="bw-highlight__quote" disabled="@(!here)" @onclick="@(() => GoToAsync(highlight.Location))">@Clamp(highlight.Text, 300)</button>
+                                    @if (highlight.Note is { } note)
+                                    {
+                                        <MarkdownView Markdown="@note" Class="bw-highlight__note" />
+                                    }
+                                    <div class="bw-highlight__meta">
+                                        <span>@HighlightWhere(highlight)</span>
+                                        <span class="bw-highlight__actions">
+                                            <MudIconButton Icon="@Icons.Material.Rounded.EditNote" Size="Size.Small" aria-label="Edit the note" OnClick="@(() => EditNoteAsync(highlight))" />
+                                            <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="Delete the highlight" OnClick="@(() => DeleteHighlightAsync(highlight))" />
+                                        </span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    break;
+
+                case ReaderPanel.Settings:
+                    <div class="bw-reader-settings">
+                        <div class="bw-setting">
+                            <MudText Typo="Typo.subtitle2">Page colour</MudText>
+                            <MudToggleGroup T="string" Value="_settings.EffectiveTheme" ValueChanged="@(value => UpdateSettingsAsync(s => s.Theme = value))" SelectionMode="SelectionMode.SingleSelection"
+                                            Size="Size.Small" Outlined="true" CheckMark="false" FixedContent="true">
+                                <MudToggleItem Value="@("light")" Text="Light" />
+                                <MudToggleItem Value="@("sepia")" Text="Sepia" />
+                                <MudToggleItem Value="@("dark")" Text="Dark" />
+                            </MudToggleGroup>
+                        </div>
+
+                        @if (IsPdf)
+                        {
+                            <div class="bw-setting">
+                                <MudText Typo="Typo.subtitle2">Zoom</MudText>
+                                <MudToggleGroup T="string" Value="_settings.PdfZoom" ValueChanged="@(value => UpdateSettingsAsync(s => s.PdfZoom = value))" SelectionMode="SelectionMode.SingleSelection"
+                                                Size="Size.Small" Outlined="true" CheckMark="false" FixedContent="true">
+                                    <MudToggleItem Value="@("page-width")" Text="Fit width" />
+                                    <MudToggleItem Value="@("page-fit")" Text="Fit page" />
+                                    <MudToggleItem Value="@("auto")" Text="Automatic" />
+                                </MudToggleGroup>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">The zoom buttons at the top zoom further in or out.</MudText>
+                            </div>
+                        }
+                        else if (IsFixedLayout)
+                        {
+                            <div class="bw-setting">
+                                <MudText Typo="Typo.subtitle2">Zoom</MudText>
+                                <MudToggleGroup T="string" Value="_settings.FixedZoom" ValueChanged="@(value => UpdateSettingsAsync(s => s.FixedZoom = value))" SelectionMode="SelectionMode.SingleSelection"
+                                                Size="Size.Small" Outlined="true" CheckMark="false" FixedContent="true">
+                                    <MudToggleItem Value="@("fit-page")" Text="Fit page" />
+                                    <MudToggleItem Value="@("fit-width")" Text="Fit width" />
+                                </MudToggleGroup>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="bw-setting">
+                                <MudText Typo="Typo.subtitle2">Text size: @(_settings.FontSize)%</MudText>
+                                <MudSlider T="int" Value="_settings.FontSize" ValueChanged="@(value => UpdateSettingsAsync(s => s.FontSize = value))" Min="70" Max="220" Step="10"
+                                           Immediate="false" Color="Color.Primary" aria-label="Text size" />
+                            </div>
+                            <div class="bw-setting">
+                                <MudText Typo="Typo.subtitle2">Font</MudText>
+                                <MudToggleGroup T="string" Value="_settings.FontFamily" ValueChanged="@(value => UpdateSettingsAsync(s => s.FontFamily = value))" SelectionMode="SelectionMode.SingleSelection"
+                                                Size="Size.Small" Outlined="true" CheckMark="false" FixedContent="true">
+                                    <MudToggleItem Value="@("publisher")" Text="The book's" />
+                                    <MudToggleItem Value="@("serif")" Text="Serif" />
+                                    <MudToggleItem Value="@("sans")" Text="Sans serif" />
+                                </MudToggleGroup>
+                            </div>
+                            <div class="bw-setting">
+                                <MudText Typo="Typo.subtitle2">Line spacing: @_settings.LineHeight.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)</MudText>
+                                <MudSlider T="double" Value="_settings.LineHeight" ValueChanged="@(value => UpdateSettingsAsync(s => s.LineHeight = Math.Round(value, 1)))" Min="1.1" Max="2.2" Step="0.1"
+                                           Immediate="false" Color="Color.Primary" aria-label="Line spacing" />
+                            </div>
+                            <div class="bw-setting">
+                                <MudText Typo="Typo.subtitle2">Margins</MudText>
+                                <MudToggleGroup T="string" Value="_settings.Margin" ValueChanged="@(value => UpdateSettingsAsync(s => s.Margin = value))" SelectionMode="SelectionMode.SingleSelection"
+                                                Size="Size.Small" Outlined="true" CheckMark="false" FixedContent="true">
+                                    <MudToggleItem Value="@("narrow")" Text="Narrow" />
+                                    <MudToggleItem Value="@("normal")" Text="Normal" />
+                                    <MudToggleItem Value="@("wide")" Text="Wide" />
+                                </MudToggleGroup>
+                            </div>
+                            <div class="bw-setting">
+                                <MudText Typo="Typo.subtitle2">Layout</MudText>
+                                <MudToggleGroup T="string" Value="_settings.Flow" ValueChanged="@(value => UpdateSettingsAsync(s => s.Flow = value))" SelectionMode="SelectionMode.SingleSelection"
+                                                Size="Size.Small" Outlined="true" CheckMark="false" FixedContent="true">
+                                    <MudToggleItem Value="@("paginated")" Text="Pages" />
+                                    <MudToggleItem Value="@("scrolled")" Text="Scrolling" />
+                                </MudToggleGroup>
+                            </div>
+                            @if (_settings.Flow == "paginated")
+                            {
+                                <div class="bw-setting">
+                                    <MudText Typo="Typo.subtitle2">Columns on wide screens</MudText>
+                                    <MudToggleGroup T="string" Value="_settings.Columns" ValueChanged="@(value => UpdateSettingsAsync(s => s.Columns = value))" SelectionMode="SelectionMode.SingleSelection"
+                                                    Size="Size.Small" Outlined="true" CheckMark="false" FixedContent="true">
+                                        <MudToggleItem Value="@("auto")" Text="Two" />
+                                        <MudToggleItem Value="@("one")" Text="One" />
+                                    </MudToggleGroup>
+                                </div>
+                            }
+                            <MudSwitch T="bool" Value="_settings.Justify" ValueChanged="@(value => UpdateSettingsAsync(s => s.Justify = value))" Color="Color.Primary" Label="Justify text" />
+                        }
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">These settings are remembered on this device.</MudText>
+                    </div>
+                    break;
+            }
+        </div>
+    </aside>
+</div>

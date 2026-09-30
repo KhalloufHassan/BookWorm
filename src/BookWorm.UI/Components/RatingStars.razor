@@ -1,0 +1,33 @@
+@* Five stars filled to the rating (e.g. 4.8 fills 96%), optionally followed by the number. *@
+
+@if (Value is { } rating)
+{
+    <span class="bw-stars @(Large ? "bw-stars--large" : "")" role="img" aria-label="@($"Rated {Labels.Rating(rating)} out of 5")">
+        <span class="bw-stars__track" aria-hidden="true">★★★★★<span class="bw-stars__fill" style="width: @Percent(rating)">★★★★★</span></span>
+        @if (ShowNumber)
+        {
+            <span class="bw-stars__number">@Labels.Rating(rating)</span>
+        }
+    </span>
+}
+else if (ShowUnrated)
+{
+    <span class="bw-stars bw-stars--unrated">Not rated</span>
+}
+
+@code {
+    [Parameter]
+    public decimal? Value { get; set; }
+
+    [Parameter]
+    public bool ShowNumber { get; set; } = true;
+
+    [Parameter]
+    public bool ShowUnrated { get; set; }
+
+    [Parameter]
+    public bool Large { get; set; }
+
+    private static string Percent(decimal rating) =>
+        (Math.Clamp(rating, 0m, 5m) / 5m * 100m).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
+}

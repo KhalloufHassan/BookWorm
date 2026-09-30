@@ -1,0 +1,70 @@
+@* A date and a time picked separately, combined into one moment in this device's time zone. *@
+
+<div class="bw-datetime">
+    <MudDatePicker Label="@Label" Date="_date" DateChanged="OnDateChangedAsync" Disabled="Disabled" Clearable="true"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="d MMM yyyy" Editable="true"
+                   HelperText="@HelperText" Error="@(Error is not null)" ErrorText="@Error" />
+    <MudTimePicker Label="Time" Time="_time" TimeChanged="OnTimeChangedAsync" Disabled="@(Disabled || _date is null)"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" AmPm="false" Editable="true" Class="bw-datetime__time" />
+</div>
+
+@code {
+    private DateTime? _date;
+    private TimeSpan? _time;
+    private DateTimeOffset? _lastValue;
+
+    [Parameter]
+    public DateTimeOffset? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<DateTimeOffset?> ValueChanged { get; set; }
+
+    [Parameter]
+    public string Label { get; set; } = "";
+
+    [Parameter]
+    public string HelperText { get; set; }
+
+    [Parameter]
+    public string Error { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Value != _lastValue)
+        {
+            var local = Value?.ToLocalTime();
+            _date = local?.Date;
+            _time = local?.TimeOfDay;
+            _lastValue = Value;
+        }
+    }
+
+    private Task OnDateChangedAsync(DateTime? date)
+    {
+        _date = date?.Date;
+        if (_date is not null && _time is null)
+        {
+            _time = new TimeSpan(12, 0, 0);
+        }
+
+        return NotifyAsync();
+    }
+
+    private Task OnTimeChangedAsync(TimeSpan? time)
+    {
+        _time = time;
+        return NotifyAsync();
+    }
+
+    private Task NotifyAsync()
+    {
+        DateTimeOffset? value = _date is { } date
+            ? new DateTimeOffset(DateTime.SpecifyKind(date + (_time ?? TimeSpan.Zero), DateTimeKind.Local))
+            : null;
+        _lastValue = value;
+        return ValueChanged.InvokeAsync(value);
+    }
+}

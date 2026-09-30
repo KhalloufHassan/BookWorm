@@ -1,0 +1,109 @@
+@inject BookWormApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <div class="bw-dialog-fields">
+            <MudSelect T="ReadStatus" Label="Status" Value="_status" ValueChanged="OnStatusChanged" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var status in Labels.ReadStatuses)
+                {
+                    <MudSelectItem Value="status">@Labels.For(status)</MudSelectItem>
+                }
+            </MudSelect>
+            <DateTimeField Label="Started" @bind-Value="_startedAt" />
+            @if (_status != ReadStatus.CurrentlyReading)
+            {
+                <DateTimeField Label="@(_status == ReadStatus.Skipped ? "Stopped" : "Finished")" @bind-Value="_finishedAt" Error="@_finishError" />
+            }
+        </div>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private ReadStatus _status = ReadStatus.CurrentlyReading;
+    private DateTimeOffset? _startedAt;
+    private DateTimeOffset? _finishedAt;
+    private string _finishError;
+    private string _error;
+    private bool _saving;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public Guid BookId { get; set; }
+
+    /// <summary>The read to edit, or null to add a new one.</summary>
+    [Parameter]
+    public ReadDetails Read { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Read is not null)
+        {
+            _status = Read.Status;
+            _startedAt = Read.StartedAt;
+            _finishedAt = Read.FinishedAt;
+        }
+        else
+        {
+            _startedAt = NowToTheMinute();
+        }
+    }
+
+    private void OnStatusChanged(ReadStatus status)
+    {
+        _status = status;
+        if (status == ReadStatus.CurrentlyReading)
+        {
+            _finishedAt = null;
+        }
+        else
+        {
+            _finishedAt ??= NowToTheMinute();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _finishError = _startedAt is { } s && _finishedAt is { } f && f < s ? "This is before the start." : null;
+        if (_finishError is not null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        try
+        {
+            var finishedAt = _status == ReadStatus.CurrentlyReading ? null : _finishedAt;
+            ReadDetails saved = Read is null
+                ? await Api.CreateReadAsync(BookId, new CreateReadRequest { Status = _status, StartedAt = _startedAt, FinishedAt = finishedAt })
+                : await Api.UpdateReadAsync(BookId, Read.Id, new UpdateReadRequest { Status = _status, StartedAt = _startedAt, FinishedAt = finishedAt, Version = Read.Version });
+            MudDialog.Close(DialogResult.Ok(saved));
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static DateTimeOffset NowToTheMinute()
+    {
+        var now = DateTimeOffset.Now;
+        return new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, now.Offset);
+    }
+}

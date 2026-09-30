@@ -1,0 +1,61 @@
+@inject BookWormApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="tag-form">
+            <DataAnnotationsValidator />
+            <MudTextField Label="Name" @bind-Value="_form.Name" For="@(() => _form.Name)" Variant="Variant.Outlined" AutoFocus="true" />
+        </EditForm>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton ButtonType="ButtonType.Submit" form="tag-form" Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly TagForm _form = new();
+    private string _error;
+    private bool _saving;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    /// <summary>The tag to rename, or null to create a new one.</summary>
+    [Parameter]
+    public TagSummary Tag { get; set; }
+
+    protected override void OnInitialized() => _form.Name = Tag?.Name ?? "";
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            TagSummary saved = Tag is null
+                ? await Api.CreateTagAsync(new CreateTagRequest { Name = _form.Name.Trim() })
+                : await Api.UpdateTagAsync(Tag.Id, new UpdateTagRequest { Name = _form.Name.Trim(), Version = Tag.Version });
+            MudDialog.Close(DialogResult.Ok(saved));
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class TagForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Give the tag a name.")]
+        [System.ComponentModel.DataAnnotations.StringLength(ApiLimits.TagNameMaxLength)]
+        public string Name { get; set; } = "";
+    }
+}

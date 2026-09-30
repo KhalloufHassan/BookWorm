@@ -1,0 +1,23 @@
+@* A book's status (or a read's status when ReadStatus is set) as a small coloured chip. *@
+
+@if (ReadStatus is { } read)
+{
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@Labels.ColorFor(read)"
+             Icon="@Labels.IconFor(read)" Class="bw-status" OnClick="OnClick">@Labels.For(read)</MudChip>
+}
+else if (Status is { } status)
+{
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@Labels.ColorFor(status)"
+             Icon="@Labels.IconFor(status)" Class="bw-status" OnClick="OnClick">@Labels.For(status)</MudChip>
+}
+
+@code {
+    [Parameter]
+    public BookStatus? Status { get; set; }
+
+    [Parameter]
+    public ReadStatus? ReadStatus { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> OnClick { get; set; }
+}

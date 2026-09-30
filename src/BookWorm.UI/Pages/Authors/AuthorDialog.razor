@@ -1,0 +1,95 @@
+@inject BookWormApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="author-form">
+            <DataAnnotationsValidator />
+            <ServerValidation @ref="_serverValidation" />
+            <div class="bw-dialog-fields">
+                <MudTextField Label="Name" @bind-Value="_form.Name" For="@(() => _form.Name)" Variant="Variant.Outlined" AutoFocus="true" />
+                <MudDatePicker Label="Date of birth" @bind-Date="_form.BirthDate" Editable="true" Clearable="true" DateFormat="d MMM yyyy"
+                               Variant="Variant.Outlined" OpenTo="OpenTo.Year" />
+                <MudDatePicker Label="Date of death" @bind-Date="_form.DeathDate" Editable="true" Clearable="true" DateFormat="d MMM yyyy"
+                               Variant="Variant.Outlined" OpenTo="OpenTo.Year" Error="@(DeathError is not null)" ErrorText="@DeathError" />
+            </div>
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+            }
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton ButtonType="ButtonType.Submit" form="author-form" Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly AuthorForm _form = new();
+    private ServerValidation _serverValidation;
+    private string _error;
+    private bool _saving;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    /// <summary>The author to edit, or null to add a new one.</summary>
+    [Parameter]
+    public AuthorDetails Author { get; set; }
+
+    private string DeathError =>
+        _form.BirthDate is { } born && _form.DeathDate is { } died && died < born ? "This is before the date of birth." : null;
+
+    protected override void OnInitialized()
+    {
+        if (Author is not null)
+        {
+            _form.Name = Author.Name;
+            _form.BirthDate = Author.BirthDate?.ToDateTime(TimeOnly.MinValue);
+            _form.DeathDate = Author.DeathDate?.ToDateTime(TimeOnly.MinValue);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (DeathError is not null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        try
+        {
+            var birth = _form.BirthDate is { } b ? DateOnly.FromDateTime(b) : (DateOnly?)null;
+            var death = _form.DeathDate is { } d ? DateOnly.FromDateTime(d) : (DateOnly?)null;
+            AuthorDetails saved = Author is null
+                ? await Api.CreateAuthorAsync(new CreateAuthorRequest { Name = _form.Name.Trim(), BirthDate = birth, DeathDate = death })
+                : await Api.UpdateAuthorAsync(Author.Id, new UpdateAuthorRequest { Name = _form.Name.Trim(), BirthDate = birth, DeathDate = death, Version = Author.Version });
+            MudDialog.Close(DialogResult.Ok(saved));
+        }
+        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest && ex.Errors.Count > 0)
+        {
+            _serverValidation?.Show(ex.Errors);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class AuthorForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Enter the author's name.")]
+        [System.ComponentModel.DataAnnotations.StringLength(ApiLimits.AuthorNameMaxLength)]
+        public string Name { get; set; } = "";
+
+        public DateTime? BirthDate { get; set; }
+
+        public DateTime? DeathDate { get; set; }
+    }
+}

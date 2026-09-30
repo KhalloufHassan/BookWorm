@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Security advisories on dependencies should be visible, not break the build. -->
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+
+    <Version>0.1.0</Version>
+    <Product>BookWorm</Product>
+    <Authors>BookWorm contributors</Authors>
+    <Copyright>Copyright (c) 2026 BookWorm contributors</Copyright>
+  </PropertyGroup>
+</Project>

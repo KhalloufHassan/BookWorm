@@ -1,0 +1,17 @@
+# Database for local development: `docker compose -f compose.dev.yaml up -d`, then `dotnet run` the server.
+name: bookworm-dev
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: bookworm
+      POSTGRES_USER: bookworm
+      POSTGRES_PASSWORD: bookworm-dev
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+
+volumes:
+  db-data:
