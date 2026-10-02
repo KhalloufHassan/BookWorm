@@ -20,7 +20,7 @@ internal static class ReadEndpoints
 
         reads.MapGet("/current", GetCurrent)
             .WithSummary("The read in progress, or 204 No Content when there is none. The reader calls this when a book is opened.");
-        reads.MapPost("/current", StartOrResume)
+        reads.MapPost("/current", StartOrResume).Accepts<StartReadRequest>("application/json")
             .WithSummary("The read in progress, started now if there is none. The reader's \"Start reading\" button calls this.");
         reads.MapPut("/{readId:guid}/progress", SaveProgress).WithValidation<ReadProgressRequest>()
             .WithSummary("Save where the reader is, and extend the current reading session.");
@@ -111,12 +111,20 @@ internal static class ReadEndpoints
         return current is null ? TypedResults.NoContent() : TypedResults.Ok(current);
     }
 
-    private static async Task<Results<Ok<ReadDetails>, Created<ReadDetails>, NotFound>> StartOrResume(
-        Guid bookId, AppDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken)
+    private static async Task<Results<Ok<ReadDetails>, Created<ReadDetails>, NotFound, Conflict<ProblemDetails>>> StartOrResume(
+        Guid bookId, AppDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken, [FromBody] StartReadRequest request = null)
     {
         if (!await db.Books.AnyAsync(b => b.Id == bookId, cancellationToken))
         {
             return TypedResults.NotFound();
+        }
+
+        // An app sending a read it started offline again: it exists already.
+        var requestedId = request?.Id is { } id && id != Guid.Empty ? id : (Guid?)null;
+        if (requestedId is not null
+            && await db.Reads.AsNoTracking().Where(r => r.Id == requestedId).Select(ToDetails).SingleOrDefaultAsync(cancellationToken) is { } existing)
+        {
+            return existing.BookId == bookId ? TypedResults.Ok(existing) : ApiErrors.Conflict("A read with this id already exists.");
         }
 
         var current = await FindCurrentAsync(db, bookId, cancellationToken);
@@ -126,9 +134,25 @@ internal static class ReadEndpoints
         }
 
         var now = timeProvider.GetUtcNow();
-        var read = new Read { BookId = bookId, Status = ReadStatus.CurrentlyReading, StartedAt = now, LastOpenedAt = now };
+        var started = request?.StartedAt?.ToUniversalTime() is { } startedAt && startedAt < now ? startedAt : now;
+        var read = new Read
+        {
+            Id = requestedId ?? Guid.CreateVersion7(),
+            BookId = bookId,
+            Status = ReadStatus.CurrentlyReading,
+            StartedAt = started,
+            LastOpenedAt = started,
+        };
         db.Reads.Add(read);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ApiErrors.IsUniqueViolation(ex))
+        {
+            // The id belongs to another user's read (hidden by the query filter).
+            return ApiErrors.Conflict("A read with this id already exists.");
+        }
 
         return TypedResults.Created($"/api/books/{bookId}/reads/{read.Id}", ToDetailsInMemory(read));
     }
@@ -152,30 +176,35 @@ internal static class ReadEndpoints
 
         var now = timeProvider.GetUtcNow();
 
-        // A bulk update, so saving progress never conflicts with edits to the read's details.
+        // Saves sent later (after reading offline) carry their own time, which can't be in the future.
+        var savedAt = request.SavedAt?.ToUniversalTime() is { } sent && sent < now ? sent : now;
+
+        // A bulk update, so saving progress never conflicts with edits to the read's details. A save
+        // older than the last one (e.g. queued offline while reading on another device) is skipped.
         var updated = await db.Reads
-            .Where(r => r.Id == readId && r.BookId == bookId)
+            .Where(r => r.Id == readId && r.BookId == bookId && (r.LastOpenedAt == null || r.LastOpenedAt <= savedAt))
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(r => r.FileId, request.FileId)
                 .SetProperty(r => r.Location, request.Location)
                 .SetProperty(r => r.Progress, request.Progress)
-                .SetProperty(r => r.LastOpenedAt, now)
+                .SetProperty(r => r.LastOpenedAt, savedAt)
                 .SetProperty(r => r.UpdatedAt, now),
                 cancellationToken);
-        if (updated == 0)
+        if (updated == 0 && !await db.Reads.AnyAsync(r => r.Id == readId && r.BookId == bookId, cancellationToken))
         {
             return TypedResults.NotFound();
         }
 
+        // The reading time counts even when the position was out of date.
         if (request.SessionId is { } sessionId && sessionId != Guid.Empty)
         {
-            await SaveSessionAsync(db, readId, sessionId, request, now, cancellationToken);
+            await SaveSessionAsync(db, readId, sessionId, request, savedAt, cancellationToken);
         }
 
         return TypedResults.NoContent();
     }
 
-    /// <summary>Starts or extends a reading session. Times come from the server clock, so they can't be in the future.</summary>
+    /// <summary>Starts or extends a reading session up to <paramref name="now"/>, which is never in the future.</summary>
     private static async Task SaveSessionAsync(
         AppDbContext db, Guid readId, Guid sessionId, ReadProgressRequest request, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -201,6 +230,11 @@ internal static class ReadEndpoints
         }
         else if (session.ReadId == readId && now - session.StartedAt <= MaxSessionLength)
         {
+            if (now <= session.EndedAt)
+            {
+                return;
+            }
+
             session.EndedAt = now;
             session.EndProgress = request.Progress;
         }

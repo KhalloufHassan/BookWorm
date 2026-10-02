@@ -24,7 +24,7 @@
         <link rel="stylesheet" href="@Assets["css/account.css"]" />
     }
     <link rel="stylesheet" href="@Assets["app.css"]" />
-    <ImportMap />
+    <ImportMap ImportMapDefinition="ImportMap" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -62,4 +62,16 @@
 
     private IComponentRenderMode PageRenderMode =>
         HttpContext.AcceptsInteractiveRouting() ? InteractiveApp : null;
+
+    /// <summary>The app's own (fingerprinted) scripts, plus the reader libraries from jsDelivr.</summary>
+    private ImportMapDefinition ImportMap
+    {
+        get
+        {
+            var readerLibraries = new ImportMapDefinition(BookWorm.UI.Services.ReaderLibraries.CdnImports, scopes: null, integrity: null);
+            return HttpContext.GetEndpoint()?.Metadata.GetMetadata<ImportMapDefinition>() is { } assets
+                ? ImportMapDefinition.Combine(assets, readerLibraries)
+                : readerLibraries;
+        }
+    }
 }

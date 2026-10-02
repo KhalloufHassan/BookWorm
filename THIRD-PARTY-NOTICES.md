@@ -2,11 +2,11 @@
 
 BookWorm is MIT licensed (see [LICENSE](LICENSE)). It includes or uses the following software.
 
-## Loaded by the browser from jsDelivr
+## The reader's libraries
 
-The reader loads these from [jsDelivr](https://www.jsdelivr.com), pinned to exact versions, so
-reading needs internet access. The versions are set in `src/BookWorm.UI/wwwroot/js/reader-pdf.js`,
-`reader-foliate.js` and `files.js`.
+The web app loads these from [jsDelivr](https://www.jsdelivr.com); the Android app includes them
+(downloaded when it's built, with their license files). Both use the versions set in
+`Directory.Build.props`. The Android app lists them, with their licenses, on its About page.
 
 | Library | Used for | Version | License |
 |---|---|---|---|
@@ -20,6 +20,7 @@ reading needs internet access. The versions are set in `src/BookWorm.UI/wwwroot/
 | Package | License |
 |---|---|
 | ASP.NET Core, Entity Framework Core, Microsoft.Extensions.* | MIT |
+| .NET MAUI and its Blazor web view (Android app) | MIT |
 | [Npgsql](https://www.npgsql.org) and its EF Core provider | PostgreSQL License |
 | [EFCore.NamingConventions](https://github.com/efcore/EFCore.NamingConventions) | Apache-2.0 |
 | [MudBlazor](https://mudblazor.com) | MIT |

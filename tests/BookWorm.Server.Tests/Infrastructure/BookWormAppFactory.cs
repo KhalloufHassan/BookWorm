@@ -1,4 +1,5 @@
 using BookWorm.Contracts;
+using BookWorm.Server.Auth;
 using BookWorm.Server.Backups;
 using BookWorm.Server.Data;
 using BookWorm.UI.Api;
@@ -71,13 +72,19 @@ public sealed class BookWormAppFactory : WebApplicationFactory<Program>, IAsyncL
                     options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
                     options.DefaultForbidScheme = TestAuthHandler.SchemeName;
                 })
-                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, options =>
+                    // Requests without the test header use the real cookie and bearer token sign-in.
+                    options.ForwardDefaultSelector = context =>
+                        context.Request.Headers.ContainsKey(TestAuthHandler.UserHeader) ? null : AuthSchemes.CookieOrBearer);
 
             // Restores normally stop the app; tests only record that they asked to.
             services.RemoveAll<IAppRestarter>();
             services.AddSingleton<IAppRestarter>(Restarter);
         });
     }
+
+    /// <summary>An API client with no sign-in, like a freshly installed app.</summary>
+    public BookWormApiClient CreateAnonymousApi() => new(CreateClient());
 
     /// <summary>Creates a user account and an API client that is signed in as that user.</summary>
     public async Task<TestUser> CreateUserAsync(bool isAdmin = false)

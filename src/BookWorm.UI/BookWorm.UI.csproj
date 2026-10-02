@@ -18,4 +18,10 @@
     <ProjectReference Include="..\BookWorm.Contracts\BookWorm.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Read by ReaderLibraries.cs; the versions are set in Directory.Build.props. -->
+    <AssemblyMetadata Include="PdfJsVersion" Value="$(PdfJsVersion)" />
+    <AssemblyMetadata Include="FoliateJsCommit" Value="$(FoliateJsCommit)" />
+  </ItemGroup>
+
 </Project>

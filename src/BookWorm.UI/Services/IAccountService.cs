@@ -13,4 +13,7 @@ public interface IAccountService
     void OpenAccountSettings();
 
     Task SignOutAsync();
+
+    /// <summary>Signs out on every device and browser (a new security stamp), then here too.</summary>
+    Task SignOutEverywhereAsync();
 }

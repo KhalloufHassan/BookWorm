@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
 @using BookWorm.Server.Data
+@using BookWorm.Server.Auth
 
 @inject SignInManager<AppUser> SignInManager
 @inject ILogger<Login> Logger
@@ -117,6 +118,10 @@
         {
             Logger.LogWarning("User account locked out.");
             RedirectManager.RedirectTo("Account/Lockout");
+        }
+        else if ((SignInManager as AppSignInManager)?.PasskeyFailure is { } passkeyFailure)
+        {
+            errorMessage = $"That passkey didn't work: {passkeyFailure} A passkey only works on the address it was created on.";
         }
         else
         {

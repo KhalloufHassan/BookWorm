@@ -1,0 +1,45 @@
+@page "/Account/Manage/SignOutEverywhere"
+
+@using Microsoft.AspNetCore.Identity
+@using BookWorm.Server.Data
+
+@inject UserManager<AppUser> UserManager
+@inject SignInManager<AppUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Sign out everywhere</PageTitle>
+
+<h3>Sign out everywhere</h3>
+
+<p>
+    Signs you out in every browser and on every device, including the BookWorm app. Use it if you lost
+    a phone or signed in on a computer that isn't yours. You'll need to sign in again here too.
+</p>
+<p class="text-secondary small">
+    Apps may keep working for up to half an hour, until their current sign-in expires.
+</p>
+
+<form @formname="sign-out-everywhere" @onsubmit="OnSubmitAsync" method="post">
+    <AntiforgeryToken />
+    <button class="btn btn-danger" type="submit">Sign out everywhere</button>
+</form>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    private async Task OnSubmitAsync()
+    {
+        var user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        // A new security stamp invalidates every session cookie and every app's refresh token.
+        await UserManager.UpdateSecurityStampAsync(user);
+        await SignInManager.SignOutAsync();
+        RedirectManager.RedirectTo("Account/Login");
+    }
+}

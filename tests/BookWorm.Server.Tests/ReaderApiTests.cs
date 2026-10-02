@@ -226,4 +226,63 @@ public sealed class ReaderApiTests(BookWormAppFactory app)
         Assert.Equal(HttpStatusCode.NotFound, current.StatusCode);
         Assert.Null(Assert.Single((await owner.GetBookAsync(book.Id)).Files).BrowseLocation);
     }
+
+    [Fact]
+    public async Task AReadStartedOffline_KeepsItsIdAndStartTime_AndRetriesReturnIt()
+    {
+        var api = (await app.CreateUserAsync()).Api;
+        var book = await api.AddBookAsync("Moby-Dick");
+        var request = new StartReadRequest { Id = Guid.NewGuid(), StartedAt = DateTimeOffset.UtcNow.AddHours(-3) };
+
+        var started = await api.StartOrResumeReadAsync(book.Id, request);
+        await api.FinishReadAsync(book.Id, started.Id, new FinishReadRequest());
+        var retry = await api.StartOrResumeReadAsync(book.Id, request);
+
+        Assert.Equal(request.Id, started.Id);
+        Assert.InRange(started.StartedAt.Value, request.StartedAt.Value.AddSeconds(-1), request.StartedAt.Value.AddSeconds(1));
+        Assert.Equal(started.Id, retry.Id);
+        Assert.Single(await api.GetReadsAsync(book.Id));
+    }
+
+    [Fact]
+    public async Task AStartTimeInTheFuture_IsTreatedAsNow()
+    {
+        var api = (await app.CreateUserAsync()).Api;
+        var book = await api.AddBookAsync("Moby-Dick");
+
+        var started = await api.StartOrResumeReadAsync(book.Id, new StartReadRequest { StartedAt = DateTimeOffset.UtcNow.AddDays(2) });
+
+        Assert.True(started.StartedAt <= DateTimeOffset.UtcNow.AddMinutes(1));
+    }
+
+    [Fact]
+    public async Task AnOlderProgressSave_DoesNotOverwriteANewerOne_ButItsReadingTimeCounts()
+    {
+        var user = await app.CreateUserAsync();
+        var book = await user.Api.AddBookAsync("Moby-Dick");
+        var file = await user.Api.UploadSampleAsync(book.Id, BookFormat.Epub);
+        var read = await user.Api.StartOrResumeReadAsync(book.Id);
+        var now = DateTimeOffset.UtcNow;
+
+        await user.Api.SaveProgressAsync(book.Id, read.Id, new ReadProgressRequest { FileId = file.Id, Location = "newer", Progress = 0.8 });
+        var sessionId = Guid.NewGuid();
+        await user.Api.SaveProgressAsync(book.Id, read.Id, new ReadProgressRequest
+        {
+            FileId = file.Id,
+            Location = "older",
+            Progress = 0.3,
+            SavedAt = now.AddHours(-2),
+            SessionId = sessionId,
+            SessionStartedAt = now.AddHours(-2).AddMinutes(-20),
+            SessionStartProgress = 0.2,
+        });
+
+        var saved = Assert.Single(await user.Api.GetReadsAsync(book.Id));
+        Assert.Equal("newer", saved.Location);
+        await using var scope = app.Services.CreateAsyncScope();
+        var session = await scope.ServiceProvider.GetRequiredService<AppDbContext>().ReadingSessions
+            .IgnoreQueryFilters().SingleAsync(s => s.Id == sessionId);
+        Assert.InRange((session.EndedAt - session.StartedAt).TotalMinutes, 19, 21);
+        Assert.InRange(session.EndedAt, now.AddHours(-2).AddSeconds(-1), now.AddHours(-2).AddSeconds(1));
+    }
 }

@@ -2,10 +2,12 @@
   <Folder Name="/src/">
     <Project Path="src/BookWorm.Client/BookWorm.Client.csproj" />
     <Project Path="src/BookWorm.Contracts/BookWorm.Contracts.csproj" />
+    <Project Path="src/BookWorm.Mobile.Core/BookWorm.Mobile.Core.csproj" />
     <Project Path="src/BookWorm.Server/BookWorm.Server.csproj" />
     <Project Path="src/BookWorm.UI/BookWorm.UI.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/BookWorm.Mobile.Core.Tests/BookWorm.Mobile.Core.Tests.csproj" />
     <Project Path="tests/BookWorm.Server.Tests/BookWorm.Server.Tests.csproj" />
   </Folder>
 </Solution>

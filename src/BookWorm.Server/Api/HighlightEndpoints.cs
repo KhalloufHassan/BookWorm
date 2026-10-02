@@ -39,12 +39,21 @@ internal static class HighlightEndpoints
         return TypedResults.Ok(highlights);
     }
 
-    private static async Task<Results<Created<HighlightDetails>, NotFound, ValidationProblem>> CreateHighlight(
+    private static async Task<Results<Created<HighlightDetails>, Ok<HighlightDetails>, NotFound, ValidationProblem, Conflict<ProblemDetails>>> CreateHighlight(
         Guid bookId, CreateHighlightRequest request, AppDbContext db, CancellationToken cancellationToken)
     {
         if (!await db.Books.AnyAsync(b => b.Id == bookId, cancellationToken))
         {
             return TypedResults.NotFound();
+        }
+
+        // Sent again with the same id: it was created already.
+        if (request.Id is { } requestedId && requestedId != Guid.Empty
+            && await db.Highlights.AsNoTracking().SingleOrDefaultAsync(h => h.Id == requestedId, cancellationToken) is { } existing)
+        {
+            return existing.BookId == bookId
+                ? TypedResults.Ok(await FindAsync(db, existing.Id, cancellationToken))
+                : ApiErrors.Conflict("A highlight with this id already exists.");
         }
 
         var file = await db.BookFiles.AsNoTracking()
@@ -56,6 +65,7 @@ internal static class HighlightEndpoints
 
         var highlight = new Highlight
         {
+            Id = request.Id is { } id && id != Guid.Empty ? id : Guid.CreateVersion7(),
             BookId = bookId,
             FileId = file.Id,
             Format = file.Format,
@@ -71,7 +81,15 @@ internal static class HighlightEndpoints
             Note = Blank(request.Note),
         };
         db.Highlights.Add(highlight);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ApiErrors.IsUniqueViolation(ex))
+        {
+            // The id belongs to another user's highlight (hidden by the query filter).
+            return ApiErrors.Conflict("A highlight with this id already exists.");
+        }
 
         return TypedResults.Created($"/api/books/{bookId}/highlights/{highlight.Id}", await FindAsync(db, highlight.Id, cancellationToken));
     }

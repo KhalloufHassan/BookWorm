@@ -14,6 +14,7 @@ public static class ApiErrorMessages
         ApiException { StatusCode: HttpStatusCode.BadRequest } api when api.Errors.Count > 0 =>
             string.Join(" ", api.Errors.Values.SelectMany(messages => messages)),
         ApiException api => api.Message,
+        OfflineException offline => offline.Message,
         HttpRequestException => "Can't reach the BookWorm server. Check your connection and try again.",
         _ => "Something went wrong. Please try again.",
     };

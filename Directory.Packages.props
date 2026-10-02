@@ -15,6 +15,12 @@
     <PackageVersion Include="Scalar.AspNetCore" Version="2.17.10" />
   </ItemGroup>
 
+  <ItemGroup Label="Mobile app (.NET MAUI)">
+    <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.110" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.110" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="10.0.12" />
+  </ItemGroup>
+
   <ItemGroup Label="User interface">
     <PackageVersion Include="Markdig" Version="1.4.0" />
     <PackageVersion Include="MudBlazor" Version="9.11.0" />

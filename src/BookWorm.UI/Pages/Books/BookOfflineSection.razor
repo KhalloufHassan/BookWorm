@@ -1,0 +1,125 @@
+@* "Download for offline reading" on a book's page, in the mobile app only. *@
+@implements IDisposable
+@inject IOfflineLibrary Offline
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+@if (Offline.IsSupported && Book.Files.Count > 0)
+{
+    <div class="bw-offline">
+        @if (_downloading)
+        {
+            <MudProgressLinear Value="@(_progress * 100)" Color="Color.Primary" Rounded="true" Class="bw-offline__progress" />
+            <span class="bw-muted">Downloading… @Labels.Percent(_progress)</span>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _cancel?.Cancel())">Cancel</MudButton>
+        }
+        else if (_download is null)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.DownloadForOffline"
+                       OnClick="DownloadAsync" Disabled="@(!Offline.IsOnline)">Download for offline reading</MudButton>
+        }
+        else
+        {
+            <MudIcon Icon="@Icons.Material.Rounded.OfflinePin" Color="Color.Success" Size="Size.Small" />
+            <span class="bw-muted">
+                Available offline · @FileSizes.Describe(_download.SizeBytes)
+                @if (_download.PendingChanges > 0)
+                {
+                    <text> · @Labels.Count(_download.PendingChanges, "change") waiting to sync</text>
+                }
+            </span>
+            @if (_download.UpdateAvailable)
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Update"
+                           OnClick="DownloadAsync" Disabled="@(!Offline.IsOnline)">Update download</MudButton>
+            }
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.DeleteOutline" OnClick="RemoveAsync">Remove download</MudButton>
+        }
+    </div>
+}
+
+@code {
+    private DownloadedBook _download;
+    private bool _downloading;
+    private double _progress;
+    private CancellationTokenSource _cancel;
+
+    [Parameter, EditorRequired]
+    public BookDetails Book { get; set; }
+
+    protected override void OnInitialized() => Offline.Changed += OnOfflineChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Offline.IsSupported)
+        {
+            _download = await Offline.GetDownloadAsync(Book.Id);
+        }
+    }
+
+    private async Task DownloadAsync()
+    {
+        _downloading = true;
+        _progress = 0;
+        _cancel = new CancellationTokenSource();
+        try
+        {
+            await Offline.DownloadAsync(Book.Id, new Progress<double>(value =>
+            {
+                _progress = value;
+                StateHasChanged();
+            }), _cancel.Token);
+            _download = await Offline.GetDownloadAsync(Book.Id);
+            Snackbar.Add($"“{Book.Title}” can now be read offline.", Severity.Success);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled: the partial download was removed.
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or IOException)
+        {
+            Snackbar.Add(ex is IOException ? $"The book couldn't be saved on this device. {ex.Message}" : ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+        finally
+        {
+            _downloading = false;
+            _cancel.Dispose();
+            _cancel = null;
+        }
+    }
+
+    private async Task RemoveAsync()
+    {
+        if (_download is { PendingChanges: > 0 })
+        {
+            var confirmed = await Dialogs.ShowMessageBoxAsync(
+                "Remove the download?",
+                $"Reading progress, highlights or notes made offline haven't reached the server yet ({Labels.Count(_download.PendingChanges, "change")}). "
+                + "They'll be lost if you remove the download now. Connect to the internet first to keep them.",
+                yesText: "Remove anyway", cancelText: "Keep it");
+            if (confirmed != true)
+            {
+                return;
+            }
+        }
+
+        await Offline.RemoveAsync(Book.Id);
+        _download = null;
+    }
+
+    private void OnOfflineChanged() => InvokeAsync(async () =>
+    {
+        if (!_downloading)
+        {
+            _download = await Offline.GetDownloadAsync(Book.Id);
+        }
+
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Offline.Changed -= OnOfflineChanged;
+        _cancel?.Cancel();
+    }
+}

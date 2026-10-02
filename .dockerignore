@@ -10,3 +10,5 @@ tests/
 .env
 compose*.yaml
 Dockerfile
+src/BookWorm.Mobile/
+src/BookWorm.Mobile.Core/

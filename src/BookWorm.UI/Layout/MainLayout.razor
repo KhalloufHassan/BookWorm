@@ -2,6 +2,8 @@
 @implements IDisposable
 @inject IAccountService Account
 @inject ThemeState Theme
+@inject IOfflineLibrary Offline
+@inject IDialogService Dialogs
 
 <AppProviders />
 
@@ -28,6 +30,7 @@
                     <ChildContent>
                         <MudMenuItem Icon="@Icons.Material.Rounded.Security" OnClick="Account.OpenAccountSettings">Account settings</MudMenuItem>
                         <MudMenuItem Icon="@Icons.Material.Rounded.Logout" OnClick="Account.SignOutAsync">Log out</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.PhonelinkErase" OnClick="SignOutEverywhereAsync">Log out everywhere</MudMenuItem>
                     </ChildContent>
                 </MudMenu>
             </Authorized>
@@ -41,6 +44,12 @@
 
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="bw-page">
+            @if (Offline.IsSupported && !Offline.IsOnline)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4" Icon="@Icons.Material.Rounded.CloudOff">
+                    You're offline. <a href="downloads">Downloaded books</a> can still be read; changes sync when you're back online.
+                </MudAlert>
+            }
             @Body
         </MudContainer>
     </MudMainContent>
@@ -67,7 +76,23 @@
         _ => Icons.Material.Rounded.BrightnessAuto,
     };
 
-    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+    protected override void OnInitialized()
+    {
+        Theme.Changed += OnThemeChanged;
+        Offline.Changed += OnThemeChanged;
+    }
+
+    private async Task SignOutEverywhereAsync()
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Log out everywhere?",
+            "You'll be logged out in every browser and on every device, including the BookWorm app. Apps may keep working for up to half an hour.",
+            yesText: "Log out everywhere", cancelText: "Cancel");
+        if (confirmed == true)
+        {
+            await Account.SignOutEverywhereAsync();
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -76,5 +101,9 @@
 
     private void OnThemeChanged() => InvokeAsync(StateHasChanged);
 
-    public void Dispose() => Theme.Changed -= OnThemeChanged;
+    public void Dispose()
+    {
+        Theme.Changed -= OnThemeChanged;
+        Offline.Changed -= OnThemeChanged;
+    }
 }

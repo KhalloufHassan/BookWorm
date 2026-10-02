@@ -1,0 +1,212 @@
+@page "/app-login"
+@layout PlainLayout
+@using System.ComponentModel.DataAnnotations
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in · BookWorm</PageTitle>
+
+@* The mobile app's sign-in. (The web app signs in on the server's own login pages.) *@
+<MudPaper Elevation="0" Class="bw-signin">
+    @if (_signIn is null)
+    {
+        <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-3">Sign in</MudText>
+        <MudButton Href="Account/Login" Variant="Variant.Filled" Color="Color.Primary">Go to the login page</MudButton>
+    }
+    else if (_step == Step.Server)
+    {
+        <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">Connect to your server</MudText>
+        <MudText Color="Color.Secondary" Class="mb-4">The address of your BookWorm server, as you open it in a browser.</MudText>
+        <EditForm Model="_server" OnValidSubmit="ConnectAsync">
+            <DataAnnotationsValidator />
+            <MudTextField @bind-Value="_server.Address" For="() => _server.Address" Label="Server address" Placeholder="https://books.example.org"
+                          InputType="InputType.Url" Variant="Variant.Outlined" AutoFocus="true" Immediate="true" Class="mb-3" />
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_error</MudAlert>
+            }
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="_busy">
+                @(_busy ? "Connecting…" : "Continue")
+            </MudButton>
+            @if (_signIn.ServerAddress is not null)
+            {
+                <MudButton Variant="Variant.Text" FullWidth="true" Class="mt-2" OnClick="@(() => Go(Step.Credentials))">Cancel</MudButton>
+            }
+        </EditForm>
+    }
+    else
+    {
+        <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">Welcome back</MudText>
+        <div class="bw-signin__server">
+            <span class="bw-muted">@_signIn.ServerAddress</span>
+            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => Go(Step.Server))">Change</MudButton>
+        </div>
+        <EditForm Model="_login" OnValidSubmit="SignInAsync">
+            <DataAnnotationsValidator />
+            @if (_step == Step.Credentials)
+            {
+                <MudTextField @bind-Value="_login.UserName" For="() => _login.UserName" Label="User name" Variant="Variant.Outlined"
+                              AutoFocus="true" UserAttributes="@(new Dictionary<string, object> { ["autocomplete"] = "username", ["autocapitalize"] = "none" })" Class="mb-3" />
+                <MudTextField @bind-Value="_login.Password" For="() => _login.Password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined"
+                              UserAttributes="@(new Dictionary<string, object> { ["autocomplete"] = "current-password" })" Class="mb-3" />
+            }
+            else
+            {
+                <MudText Class="mb-3">
+                    @(_useRecoveryCode ? "Enter one of your recovery codes." : "Enter the code from your authenticator app.")
+                </MudText>
+                @if (_useRecoveryCode)
+                {
+                    <MudTextField @bind-Value="_login.RecoveryCode" Label="Recovery code" Variant="Variant.Outlined" AutoFocus="true" Class="mb-3"
+                                  UserAttributes="@(new Dictionary<string, object> { ["autocomplete"] = "off", ["autocapitalize"] = "none" })" />
+                }
+                else
+                {
+                    <MudTextField @bind-Value="_login.TwoFactorCode" Label="Code" Variant="Variant.Outlined" AutoFocus="true" Class="mb-3"
+                                  UserAttributes="@(new Dictionary<string, object> { ["autocomplete"] = "one-time-code", ["inputmode"] = "numeric" })" />
+                }
+            }
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_error</MudAlert>
+            }
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="_busy">
+                @(_busy ? "Signing in…" : "Sign in")
+            </MudButton>
+            @if (_step == Step.TwoFactor)
+            {
+                <MudButton Variant="Variant.Text" FullWidth="true" Class="mt-2" OnClick="ToggleRecoveryCode">
+                    @(_useRecoveryCode ? "Use the authenticator app instead" : "Use a recovery code instead")
+                </MudButton>
+                <MudButton Variant="Variant.Text" FullWidth="true" OnClick="@(() => Go(Step.Credentials))">Back</MudButton>
+            }
+        </EditForm>
+        @if (_step == Step.Credentials)
+        {
+            <div class="bw-signin__or"><span>or</span></div>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Rounded.Key"
+                       OnClick="SignInWithBrowserAsync" Disabled="_busy">Sign in with a passkey</MudButton>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
+                Opens your server's login page in the browser, where you can also use a password and two-factor code.
+            </MudText>
+        }
+    }
+</MudPaper>
+
+@code {
+    private IAppSignIn _signIn;
+    private Step _step;
+    private readonly ServerForm _server = new();
+    private readonly AppLoginRequest _login = new();
+    private bool _useRecoveryCode;
+    private bool _busy;
+    private string _error;
+
+    [SupplyParameterFromQuery]
+    public string ReturnUrl { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _signIn = (IAppSignIn)Services.GetService(typeof(IAppSignIn));
+        _step = _signIn?.ServerAddress is null ? Step.Server : Step.Credentials;
+        _server.Address = _signIn?.ServerAddress ?? "";
+    }
+
+    private void Go(Step step)
+    {
+        _step = step;
+        _error = null;
+        if (step == Step.Credentials)
+        {
+            _login.TwoFactorCode = null;
+            _login.RecoveryCode = null;
+            _useRecoveryCode = false;
+        }
+    }
+
+    private void ToggleRecoveryCode()
+    {
+        _useRecoveryCode = !_useRecoveryCode;
+        _login.TwoFactorCode = null;
+        _login.RecoveryCode = null;
+        _error = null;
+    }
+
+    private async Task ConnectAsync() => await RunAsync(async () =>
+    {
+        await _signIn.SetServerAsync(_server.Address);
+        _server.Address = _signIn.ServerAddress;
+        Go(Step.Credentials);
+    });
+
+    private async Task SignInAsync() => await RunAsync(async () =>
+    {
+        try
+        {
+            await _signIn.SignInAsync(_login);
+            Done();
+        }
+        catch (ApiException ex) when (ex.Problem?.Type == AuthProblemTypes.TwoFactorRequired)
+        {
+            Go(Step.TwoFactor);
+        }
+        catch (ApiException ex) when (ex.Problem?.Type is AuthProblemTypes.InvalidCredentials or AuthProblemTypes.InvalidTwoFactorCode or AuthProblemTypes.LockedOut)
+        {
+            _error = ex.Problem.Detail;
+        }
+    });
+
+    private async Task SignInWithBrowserAsync() => await RunAsync(async () =>
+    {
+        await _signIn.SignInWithBrowserAsync();
+        Done();
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (AppSignInException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (TaskCanceledException)
+        {
+            // The browser sign-in was closed.
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Done()
+    {
+        // Only pages of the app itself.
+        var target = ReturnUrl is { Length: > 0 } url && Uri.IsWellFormedUriString(url, UriKind.Relative) && !url.StartsWith("//") && !url.StartsWith("app-login")
+            ? url
+            : "";
+        Navigation.NavigateTo(target, replace: true);
+    }
+
+    private enum Step
+    {
+        Server,
+        Credentials,
+        TwoFactor,
+    }
+
+    private sealed class ServerForm
+    {
+        [Required(ErrorMessage = "Enter your server's address.")]
+        public string Address { get; set; } = "";
+    }
+}

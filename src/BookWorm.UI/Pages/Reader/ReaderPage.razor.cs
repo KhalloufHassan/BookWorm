@@ -78,6 +78,7 @@ public sealed partial class ReaderPage
     [Inject] private BookWormApiClient Api { get; set; }
     [Inject] private IJSRuntime JS { get; set; }
     [Inject] private ThemeState Theme { get; set; }
+    [Inject] private IAppHost Host { get; set; }
     [Inject] private IPreferenceStore Preferences { get; set; }
     [Inject] private IDialogService Dialogs { get; set; }
     [Inject] private ISnackbar Snackbar { get; set; }
@@ -134,6 +135,8 @@ public sealed partial class ReaderPage
         _self = DotNetObjectReference.Create(this);
         _settings = await ReaderSettings.LoadAsync(Preferences);
         Theme.SetReaderDarkMode(_settings.IsDark);
+        Host.Pausing += SaveOnPauseAsync;
+        Host.SetReading(true);
         _heartbeat = new Timer(_ => InvokeAsync(HeartbeatAsync), null, HeartbeatInterval, HeartbeatInterval);
     }
 
@@ -771,10 +774,17 @@ public sealed partial class ReaderPage
         }
     }
 
+    /// <summary>The mobile app is going to the background (it can't rely on the page-close beacon).</summary>
+    private Task SaveOnPauseAsync() => InvokeAsync(async () =>
+    {
+        await SaveAsync();
+        _sessionActive = false;
+    });
+
     /// <summary>Lets reader.js save the position itself if the page is closed before the next save.</summary>
     private async Task UpdateBeaconAsync()
     {
-        if (_reader is null || _relocations < 2)
+        if (_reader is null || _relocations < 2 || !Host.UsesPageCloseBeacon)
         {
             return;
         }
@@ -911,6 +921,8 @@ public sealed partial class ReaderPage
     public async ValueTask DisposeAsync()
     {
         Theme.SetReaderDarkMode(null);
+        Host.Pausing -= SaveOnPauseAsync;
+        Host.SetReading(false);
         _heartbeat?.Dispose();
         _saveTimer?.Dispose();
         await SaveAsync();

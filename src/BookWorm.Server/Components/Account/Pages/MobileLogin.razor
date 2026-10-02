@@ -1,0 +1,41 @@
+@page "/Account/MobileLogin"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+@using BookWorm.Server.Auth
+
+<PageTitle>Sign in to the app · BookWorm</PageTitle>
+
+@* The mobile app opens this page in the browser to sign in, e.g. with a passkey. Visitors who aren't
+   signed in are sent to the login page first and come back here. Asking before handing the app its
+   sign-in means another app on the phone can't use this page to sign in silently. *@
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-5">
+        @if (MobileCodes.IsValidChallenge(Challenge))
+        {
+            <h1 class="h3 mb-3">Sign in to the app?</h1>
+            <p>
+                The BookWorm app on this device is asking to sign in as <strong>@HttpContext.User.Identity?.Name</strong>.
+                Only continue if you just started signing in from the app.
+            </p>
+            <form method="post" action="Account/MobileLogin/Confirm">
+                <AntiforgeryToken />
+                <input type="hidden" name="challenge" value="@Challenge" />
+                <button type="submit" class="w-100 btn btn-lg btn-primary">Sign in to the app</button>
+            </form>
+            <p class="text-secondary small mt-3 mb-0">After this you can close the browser and go back to the app.</p>
+        }
+        else
+        {
+            <h1 class="h3 mb-3">This link isn't valid</h1>
+            <p>Start signing in again from the BookWorm app.</p>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string Challenge { get; set; }
+}

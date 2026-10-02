@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The mobile app's logic that doesn't need Android (or iOS): sign-in tokens, offline reading and
+       syncing. Kept free of MAUI so it can be unit tested on any machine. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\BookWorm.Contracts\BookWorm.Contracts.csproj" />
+    <ProjectReference Include="..\BookWorm.UI\BookWorm.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BookWorm.Mobile.Core.Tests" />
+  </ItemGroup>
+
+</Project>

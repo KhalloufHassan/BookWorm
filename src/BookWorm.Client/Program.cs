@@ -29,6 +29,8 @@ builder.Services.AddScoped<IPreferenceStore, LocalStoragePreferenceStore>();
 builder.Services.AddScoped<BrowseState>();
 builder.Services.AddScoped<ThemeState>();
 builder.Services.AddScoped<BrowserFiles>();
+builder.Services.AddScoped<IAppHost, BrowserAppHost>();
+builder.Services.AddScoped<IOfflineLibrary, NoOfflineLibrary>();
 builder.Services.AddScoped<PendingBook>();
 
 await builder.Build().RunAsync();

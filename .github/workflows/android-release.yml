@@ -1,0 +1,68 @@
+# Builds the Android app and publishes it as a GitHub release when a tag like android-v1.2.0 is pushed:
+#   git tag android-v1.2.0 && git push origin android-v1.2.0
+#
+# Needs these repository secrets (Settings → Secrets and variables → Actions), see "Android app" in the README:
+#   ANDROID_KEYSTORE_BASE64    the release keystore, base64-encoded
+#   ANDROID_KEYSTORE_PASSWORD  the keystore's password
+#   ANDROID_KEY_ALIAS          the key's alias in the keystore
+#   ANDROID_KEY_PASSWORD       the key's password
+name: Android release
+
+on:
+  push:
+    tags: ["android-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: "21"
+
+      - name: Install the .NET MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Version from the tag
+        run: echo "APP_VERSION=${GITHUB_REF_NAME#android-v}" >> "$GITHUB_ENV"
+
+      - name: Keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/bookworm.keystore"
+
+      - name: Test the app's logic
+        run: dotnet test --project tests/BookWorm.Mobile.Core.Tests
+
+      - name: Build the signed APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: >
+          dotnet publish src/BookWorm.Mobile/BookWorm.Mobile.csproj
+          --configuration Release
+          --output artifacts
+          -p:ApplicationDisplayVersion="$APP_VERSION"
+          -p:ApplicationVersion=${{ github.run_number }}
+          -p:AndroidKeyStore=true
+          -p:AndroidSigningKeyStore="$RUNNER_TEMP/bookworm.keystore"
+          -p:AndroidSigningKeyAlias="${{ secrets.ANDROID_KEY_ALIAS }}"
+          -p:AndroidSigningStorePass=env:ANDROID_KEYSTORE_PASSWORD
+          -p:AndroidSigningKeyPass=env:ANDROID_KEY_PASSWORD
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp artifacts/*-Signed.apk "BookWorm-$APP_VERSION.apk"
+          gh release create "$GITHUB_REF_NAME" "BookWorm-$APP_VERSION.apk" \
+            --title "BookWorm for Android $APP_VERSION" \
+            --generate-notes

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BookWorm.Contracts;
 using BookWorm.UI.Api;
+using BookWorm.UI.Auth;
 using Microsoft.AspNetCore.Components.Authorization;
 
 namespace BookWorm.Client.Services;
@@ -37,22 +38,6 @@ public sealed class CookieAuthenticationStateProvider(BookWormApiClient api) : A
             return Anonymous;
         }
 
-        List<Claim> claims =
-        [
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.UserName),
-        ];
-
-        if (user.Email is not null)
-        {
-            claims.Add(new Claim(ClaimTypes.Email, user.Email));
-        }
-
-        if (user.IsAdmin)
-        {
-            claims.Add(new Claim(ClaimTypes.Role, RoleNames.Admin));
-        }
-
-        return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "BookWorm")));
+        return new AuthenticationState(UserPrincipal.From(user));
     }
 }

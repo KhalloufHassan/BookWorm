@@ -17,6 +17,20 @@ public sealed class BookWormApiClient(HttpClient http)
 
     // Server and account
 
+    // App sign-in (bearer tokens; the web app uses the server's login pages and a cookie instead)
+
+    public Task<AppTokens> LoginAsync(AppLoginRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<AppTokens>(HttpMethod.Post, "api/auth/login", request, cancellationToken);
+
+    public Task<AppTokens> RefreshTokensAsync(string refreshToken, CancellationToken cancellationToken = default) =>
+        SendAsync<AppTokens>(HttpMethod.Post, "api/auth/refresh", new RefreshTokenRequest { RefreshToken = refreshToken }, cancellationToken);
+
+    public Task<AppTokens> RedeemMobileCodeAsync(MobileCodeRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<AppTokens>(HttpMethod.Post, "api/auth/mobile-code", request, cancellationToken);
+
+    public Task SignOutEverywhereAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Post, "api/account/sign-out-everywhere", null, cancellationToken);
+
     public Task<ServerInfo> GetServerInfoAsync(CancellationToken cancellationToken = default) =>
         GetAsync<ServerInfo>("api/server-info", cancellationToken);
 
@@ -117,6 +131,10 @@ public sealed class BookWormApiClient(HttpClient http)
         using var response = await http.GetAsync($"api/books/{bookId}/reads/current", cancellationToken);
         return response.StatusCode == HttpStatusCode.NoContent ? null : await ReadAsync<ReadDetails>(response, cancellationToken);
     }
+
+    /// <summary>Starts a read with an id and start time chosen by the app (for reads started offline).</summary>
+    public Task<ReadDetails> StartOrResumeReadAsync(Guid bookId, StartReadRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<ReadDetails>(HttpMethod.Post, $"api/books/{bookId}/reads/current", request, cancellationToken);
 
     public Task<ReadDetails> StartOrResumeReadAsync(Guid bookId, CancellationToken cancellationToken = default) =>
         SendAsync<ReadDetails>(HttpMethod.Post, $"api/books/{bookId}/reads/current", null, cancellationToken);

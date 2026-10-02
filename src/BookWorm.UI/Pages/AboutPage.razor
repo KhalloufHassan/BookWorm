@@ -1,0 +1,104 @@
+@page "/about"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject IAppHost Host
+
+<PageTitle>About · BookWorm</PageTitle>
+
+<MudText Typo="Typo.h3" HtmlTag="h1" Class="mb-6">About BookWorm</MudText>
+
+<MudPaper Elevation="0" Class="bw-section mb-6 bw-about">
+    <dl class="bw-about__facts">
+        @if (Host.IsNativeApp)
+        {
+            <dt>App version</dt>
+            <dd>@Host.AppVersion</dd>
+        }
+        <dt>Server version</dt>
+        <dd>@(_server?.Version ?? "…")</dd>
+    </dl>
+    @if (Host.IsNativeApp)
+    {
+        <div class="bw-about__update">
+            @if (_release is not null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Version @_release.Version is available. <a href="@_release.Url" target="_blank" rel="noopener">Download it</a>
+                </MudAlert>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.SystemUpdate"
+                           OnClick="CheckForUpdateAsync" Disabled="_checking">Check for updates</MudButton>
+                @if (_checked)
+                {
+                    <span class="bw-muted">This is the latest version.</span>
+                }
+                @if (_updateError is not null)
+                {
+                    <span class="bw-muted">@_updateError</span>
+                }
+            }
+        </div>
+    }
+</MudPaper>
+
+<MudText Typo="Typo.h5" HtmlTag="h2" Class="mb-2">Open-source software</MudText>
+<MudText Color="Color.Secondary" Class="mb-3">BookWorm is MIT licensed and built on these projects, under their licenses:</MudText>
+<ul class="bw-licenses">
+    @foreach (var (name, url, license, usedFor) in Licenses)
+    {
+        <li><a href="@url" target="_blank" rel="noopener">@name</a> · @license <span class="bw-muted">— @usedFor</span></li>
+    }
+</ul>
+
+@code {
+    private static readonly (string Name, string Url, string License, string UsedFor)[] Licenses =
+    [
+        ("BookWorm", "https://github.com/KhalloufHassan/BookWorm", "MIT", "this app"),
+        (".NET, ASP.NET Core and .NET MAUI", "https://github.com/dotnet", "MIT", "the app platform"),
+        ("MudBlazor", "https://mudblazor.com", "MIT", "the interface components"),
+        ("Markdig", "https://github.com/xoofx/markdig", "BSD-2-Clause", "showing Markdown notes"),
+        ("foliate-js", "https://github.com/johnfactotum/foliate-js", "MIT", "reading EPUB, MOBI, AZW3, FB2 and CBZ"),
+        ("zip.js", "https://github.com/gildas-lormeau/zip.js", "BSD-3-Clause", "opening EPUB and CBZ archives (bundled with foliate-js)"),
+        ("fflate", "https://github.com/101arrowz/fflate", "MIT", "decompressing MOBI text (bundled with foliate-js)"),
+        ("PDF.js", "https://github.com/mozilla/pdf.js", "Apache-2.0", "reading PDFs"),
+    ];
+
+    private ServerInfo _server;
+    private AppRelease _release;
+    private bool _checking;
+    private bool _checked;
+    private string _updateError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _server = await Api.GetServerInfoAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            // Offline: the server version just isn't shown.
+        }
+    }
+
+    private async Task CheckForUpdateAsync()
+    {
+        _checking = true;
+        _updateError = null;
+        try
+        {
+            _release = await Host.FindNewerReleaseAsync(CancellationToken.None);
+            _checked = _release is null;
+        }
+        catch (HttpRequestException)
+        {
+            _updateError = "Couldn't check for updates. Try again later.";
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+}

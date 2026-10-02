@@ -59,6 +59,12 @@ public sealed record HighlightDetails(
 
 public sealed class CreateHighlightRequest
 {
+    /// <summary>
+    /// Optional id chosen by the client, so that sending the same highlight again (e.g. a retry after
+    /// a lost connection) returns the one already created instead of adding another.
+    /// </summary>
+    public Guid? Id { get; set; }
+
     [Required]
     public Guid? FileId { get; set; }
 

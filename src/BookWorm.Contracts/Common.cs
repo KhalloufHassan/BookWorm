@@ -28,7 +28,8 @@ public sealed class ApiProblem
 /// Public information about the server. Apps call this first to check that they can talk to it:
 /// <see cref="ApiVersion"/> only changes when the API changes in a way that breaks existing clients.
 /// </summary>
-public sealed record ServerInfo(string Name, string Version, int ApiVersion, bool SetupRequired);
+/// <param name="MinimumAppVersion">The oldest mobile app version this server works with, or null for any.</param>
+public sealed record ServerInfo(string Name, string Version, int ApiVersion, bool SetupRequired, string MinimumAppVersion);
 
 public static class ApiLimits
 {

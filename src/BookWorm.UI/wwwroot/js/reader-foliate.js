@@ -1,7 +1,7 @@
-// EPUB, MOBI, AZW3, FB2 and CBZ, rendered by foliate-js, loaded from jsDelivr and pinned to one
-// commit (foliate-js has no releases; see THIRD-PARTY-NOTICES.md).
-import { makeBook } from 'https://cdn.jsdelivr.net/gh/johnfactotum/foliate-js@78914aef4466eb960965702401634c2cb348e9b1/view.js'
-import { Overlayer } from 'https://cdn.jsdelivr.net/gh/johnfactotum/foliate-js@78914aef4466eb960965702401634c2cb348e9b1/overlayer.js'
+// EPUB, MOBI, AZW3, FB2 and CBZ, rendered by foliate-js. It's imported by bare name; the host's
+// import map says where from (see ReaderLibraries.cs).
+import { makeBook } from 'foliate-js/view.js'
+import { Overlayer } from 'foliate-js/overlayer.js'
 import { contextOf, findQuote, cleanSelectionText } from './anchoring.js'
 import { protectBook } from './sanitize.js'
 import { HIGHLIGHT_COLORS, THEMES, clientRectOf, debounce } from './reader-common.js'

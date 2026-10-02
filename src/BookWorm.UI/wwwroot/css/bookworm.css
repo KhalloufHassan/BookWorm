@@ -475,6 +475,51 @@ body {
     gap: 0.5rem;
 }
 
+.bw-downloads {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+    max-width: 48rem;
+}
+
+.bw-download {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.bw-download__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.bw-download__title {
+    font-family: var(--bw-serif);
+    font-weight: 600;
+    color: inherit;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bw-offline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.bw-offline__progress {
+    flex: 1 1 8rem;
+    max-width: 16rem;
+}
+
 .bw-book__sections {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
@@ -1699,3 +1744,89 @@ div.bw-highlight__quote {
     top: 4px;
     inset-inline-end: 4px;
 }
+
+/* Mobile app sign-in */
+
+.bw-plain {
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.bw-plain__main {
+    width: 100%;
+    max-width: 26rem;
+}
+
+.bw-plain__brand {
+    display: flex;
+    justify-content: center;
+    margin: 1rem 0 1.5rem;
+}
+
+.bw-signin {
+    padding: 1.5rem;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+}
+
+.bw-signin__server {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    overflow: hidden;
+}
+
+.bw-signin__server .bw-muted {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bw-signin__or {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    color: var(--mud-palette-text-secondary);
+}
+
+.bw-signin__or::before,
+.bw-signin__or::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+/* About */
+
+.bw-about__facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1.5rem;
+    margin: 0;
+}
+
+.bw-about__facts dt {
+    color: var(--mud-palette-text-secondary);
+}
+
+.bw-about__facts dd {
+    margin: 0;
+}
+
+.bw-about__update {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.bw-licenses {
+    padding-left: 1.25rem;
+    line-height: 1.8;
+}
+

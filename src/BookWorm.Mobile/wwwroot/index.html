@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>BookWorm</title>
+    <base href="/" />
+    <!-- The reader's libraries are bundled in the app (see ReaderLibraries.targets), so books open offline. -->
+    <script type="importmap">
+        {
+            "imports": {
+                "pdfjs-dist/": "./lib/pdfjs-dist/",
+                "foliate-js/": "./lib/foliate-js/"
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
+    <link rel="stylesheet" href="_content/BookWorm.UI/css/bookworm.css" />
+    <link rel="stylesheet" href="shared/app.css" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+</head>
+
+<body>
+    <div id="app">
+        <div id="bw-boot" class="bw-boot" role="status">Opening your library…</div>
+    </div>
+
+    <div id="blazor-error-ui" data-nosnippet>
+        Something went wrong.
+        <a href="" class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+</body>
+
+</html>

@@ -12,5 +12,11 @@
     <Product>BookWorm</Product>
     <Authors>BookWorm contributors</Authors>
     <Copyright>Copyright (c) 2026 BookWorm contributors</Copyright>
+
+    <!-- The reader's JavaScript libraries. The web app loads them from jsDelivr, the mobile app bundles
+         them (downloaded at build time); both use these versions (see ReaderLibraries.cs). -->
+    <PdfJsVersion>6.3.289</PdfJsVersion>
+    <!-- foliate-js has no releases, so it is pinned to a commit. -->
+    <FoliateJsCommit>78914aef4466eb960965702401634c2cb348e9b1</FoliateJsCommit>
   </PropertyGroup>
 </Project>

@@ -483,3 +483,8 @@ $RECYCLE.BIN/
 
 # Book files, covers, notes and backups of the development server
 .data/
+
+# The mobile app's bundled reader libraries and copies of the web app's files (made by its build)
+src/BookWorm.Mobile/wwwroot/lib/
+src/BookWorm.Mobile/wwwroot/shared/
+src/BookWorm.Mobile/wwwroot/favicon.svg

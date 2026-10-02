@@ -1,6 +1,6 @@
 // Picking, inspecting and uploading files in the browser. Files stay in the browser (keyed by a
 // short id) until they are uploaded, so large books never pass through the WebAssembly app.
-import { makeBook } from 'https://cdn.jsdelivr.net/gh/johnfactotum/foliate-js@78914aef4466eb960965702401634c2cb348e9b1/view.js'
+import { makeBook } from 'foliate-js/view.js'
 
 const files = new Map()
 const urls = new Map()
@@ -175,14 +175,16 @@ export async function prepareCover(key) {
 
 /**
  * Sends a kept file as the raw body of a PUT request, reporting progress to `dotnet.OnUploadProgress`.
- * Resolves with the status code and response text; rejects only on network errors.
+ * Sends the session cookie, or the given Authorization header (the mobile app, calling the server
+ * directly). Resolves with the status code and response text; rejects only on network errors.
  */
-export function upload(key, url, dotnet) {
+export function upload(key, url, dotnet, authorization) {
     const file = get(key)
     return new Promise((resolve, reject) => {
         const request = new XMLHttpRequest()
         request.open('PUT', url)
-        request.withCredentials = true
+        if (authorization) request.setRequestHeader('Authorization', authorization)
+        else request.withCredentials = true
         request.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
         let last = 0
         request.upload.addEventListener('progress', event => {

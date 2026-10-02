@@ -73,6 +73,23 @@ public sealed class ReadProgressRequest
 
     [Range(0.0, 1.0)]
     public double? SessionStartProgress { get; set; }
+
+    /// <summary>
+    /// When the position was saved, for saves sent later (e.g. after reading offline). A save older
+    /// than the read's last one is ignored, and the reading session ends at this time. Defaults to now.
+    /// </summary>
+    public DateTimeOffset? SavedAt { get; set; }
+}
+
+/// <summary>
+/// Optional details for starting a read, used by apps that started it offline: the id they gave it
+/// and when it started. Sending it again returns the same read.
+/// </summary>
+public sealed class StartReadRequest
+{
+    public Guid? Id { get; set; }
+
+    public DateTimeOffset? StartedAt { get; set; }
 }
 
 /// <summary>Sent by the reader while you browse a book with no read in progress: saves where you are, nothing else.</summary>

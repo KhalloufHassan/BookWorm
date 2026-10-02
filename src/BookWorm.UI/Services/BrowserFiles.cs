@@ -25,7 +25,7 @@ public sealed record FileMetadata(
 /// Picks, inspects and uploads files through <c>files.js</c>. Uploads go straight from the browser to
 /// the server (with progress), so even very large books never pass through the app's memory.
 /// </summary>
-public sealed class BrowserFiles(IJSRuntime js) : IAsyncDisposable
+public sealed class BrowserFiles(IJSRuntime js, IAppHost host) : IAsyncDisposable
 {
     private Task<IJSObjectReference> _module;
 
@@ -57,11 +57,15 @@ public sealed class BrowserFiles(IJSRuntime js) : IAsyncDisposable
     public async Task<string> CoverFromBookFileAsync(Guid bookId, BookFileDetails file) =>
         await (await Module).InvokeAsync<string>("coverFromUrl", BookWormApiClient.FileUrl(bookId, file.Id), file.FileName, file.Format.ToString());
 
-    /// <summary>Uploads a picked file as a request body. Throws <see cref="ApiException"/> when the server refuses it.</summary>
+    /// <summary>
+    /// Uploads a picked file as a request body. Throws <see cref="ApiException"/> when the server refuses it.
+    /// In the mobile app it goes straight to the server with the app's token (see <see cref="IAppHost"/>).
+    /// </summary>
     public async Task<T> UploadAsync<T>(string key, string url, Action<long, long> onProgress = null)
     {
         using var progress = DotNetObjectReference.Create(new UploadProgress(onProgress));
-        var result = await (await Module).InvokeAsync<UploadResult>("upload", key, url, progress);
+        var access = await host.GetApiAccessAsync();
+        var result = await (await Module).InvokeAsync<UploadResult>("upload", key, access.BaseUrl + url, progress, access.Authorization);
         if (result.Status is >= 200 and < 300)
         {
             return JsonSerializer.Deserialize<T>(result.Body, BookWormJson.Options)

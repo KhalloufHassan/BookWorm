@@ -134,6 +134,42 @@ public sealed class HighlightsApiTests(BookWormAppFactory app)
         return (api, book, file);
     }
 
+    [Fact]
+    public async Task CreatingAHighlight_WithAnIdAgain_ReturnsTheSameOne()
+    {
+        var api = (await app.CreateUserAsync()).Api;
+        var book = await api.AddBookAsync("Moby-Dick");
+        var file = await api.UploadSampleAsync(book.Id, BookFormat.Epub);
+        var request = Highlight(file.Id, "stormy night");
+        request.Id = Guid.NewGuid();
+
+        var first = await api.CreateHighlightAsync(book.Id, request);
+        var retry = await api.CreateHighlightAsync(book.Id, request);
+
+        Assert.Equal(request.Id, first.Id);
+        Assert.Equal(first.Id, retry.Id);
+        Assert.Single(await api.GetHighlightsAsync(book.Id));
+    }
+
+    [Fact]
+    public async Task CreatingAHighlight_WithAnotherUsersId_Conflicts()
+    {
+        var owner = (await app.CreateUserAsync()).Api;
+        var ownerBook = await owner.AddBookAsync("Moby-Dick");
+        var ownerFile = await owner.UploadSampleAsync(ownerBook.Id, BookFormat.Epub);
+        var taken = await owner.CreateHighlightAsync(ownerBook.Id, Highlight(ownerFile.Id, "stormy night"));
+        var stranger = (await app.CreateUserAsync()).Api;
+        var book = await stranger.AddBookAsync("Emma");
+        var file = await stranger.UploadSampleAsync(book.Id, BookFormat.Epub);
+        var request = Highlight(file.Id, "dark");
+        request.Id = taken.Id;
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => stranger.CreateHighlightAsync(book.Id, request));
+
+        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+        Assert.Equal("stormy night", Assert.Single(await owner.GetHighlightsAsync(ownerBook.Id)).Text);
+    }
+
     private static CreateHighlightRequest Highlight(Guid fileId, string text, double position = 0.5, string note = null) => new()
     {
         FileId = fileId,

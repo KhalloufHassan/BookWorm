@@ -1,15 +1,15 @@
 // PDFs, rendered by PDF.js's viewer components: continuous scrolling, zoom, text selection and search.
-// PDF.js is loaded from jsDelivr, pinned to one version (see THIRD-PARTY-NOTICES.md). Its worker is
-// cross-origin, which PDF.js handles by starting it from a same-origin blob that imports it.
-import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/build/pdf.min.mjs'
+// PDF.js is imported by bare name; the host's import map says where from (see ReaderLibraries.cs).
+// From a CDN its worker is cross-origin, which PDF.js handles by starting it from a same-origin blob.
+import * as pdfjsLib from 'pdfjs-dist/build/pdf.min.mjs'
 import { bestMatch, cleanSelectionText, contextOf, findQuote } from './anchoring.js'
 import { HIGHLIGHT_COLORS, THEMES, debounce } from './reader-common.js'
 
 // The viewer components expect the library as a global.
 globalThis.pdfjsLib = pdfjsLib
-const viewerLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/web/pdf_viewer.mjs')
+const viewerLib = await import('pdfjs-dist/web/pdf_viewer.mjs')
 
-const BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/'
+const BASE = import.meta.resolve('pdfjs-dist/')
 pdfjsLib.GlobalWorkerOptions.workerSrc = `${BASE}build/pdf.worker.min.mjs`
 
 if (!document.querySelector('link[data-bw-pdfjs]')) {
@@ -69,6 +69,8 @@ export class PdfReader {
             eventBus,
             externalLinkTarget: viewerLib.LinkTarget.BLANK,
             externalLinkRel: 'noopener noreferrer nofollow',
+            // Links inside a PDF can ask for their own zoom ("fit the page", or a tiny one); keep the reader's.
+            ignoreDestinationZoom: true,
         })
         const findController = new viewerLib.PDFFindController({ eventBus, linkService })
         const viewer = new viewerLib.PDFViewer({

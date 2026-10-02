@@ -1,0 +1,51 @@
+<Project>
+
+  <!-- The reader's JavaScript libraries, bundled into the app so books open offline. They're downloaded
+       once (at restore, so the build that follows picks them up) into wwwroot/lib, which git ignores.
+       The versions come from Directory.Build.props, the same the web app loads from jsDelivr. -->
+
+  <PropertyGroup>
+    <ReaderLibrariesFolder>$(MSBuildThisFileDirectory)wwwroot/lib/</ReaderLibrariesFolder>
+    <ReaderLibrariesMarker>$(ReaderLibrariesFolder)versions-$(PdfJsVersion)-$(FoliateJsCommit).txt</ReaderLibrariesMarker>
+    <ReaderLibrariesDownloads>$(MSBuildThisFileDirectory)obj/reader-libraries/</ReaderLibrariesDownloads>
+  </PropertyGroup>
+
+  <Target Name="DownloadReaderLibraries" AfterTargets="Restore" BeforeTargets="BeforeBuild" Condition="!Exists('$(ReaderLibrariesMarker)')">
+    <RemoveDir Directories="$(ReaderLibrariesDownloads);$(ReaderLibrariesFolder)" />
+
+    <DownloadFile SourceUrl="https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-$(PdfJsVersion).tgz"
+                  DestinationFolder="$(ReaderLibrariesDownloads)" DestinationFileName="pdfjs.tgz" />
+    <MakeDir Directories="$(ReaderLibrariesDownloads)pdfjs" />
+    <Exec Command="tar -xzf &quot;$(ReaderLibrariesDownloads)pdfjs.tgz&quot; -C &quot;$(ReaderLibrariesDownloads)pdfjs&quot;" />
+
+    <DownloadFile SourceUrl="https://github.com/johnfactotum/foliate-js/archive/$(FoliateJsCommit).zip"
+                  DestinationFolder="$(ReaderLibrariesDownloads)" DestinationFileName="foliate.zip" />
+    <Unzip SourceFiles="$(ReaderLibrariesDownloads)foliate.zip" DestinationFolder="$(ReaderLibrariesDownloads)foliate" />
+
+    <PropertyGroup>
+      <_PdfJs>$(ReaderLibrariesDownloads)pdfjs/package/</_PdfJs>
+      <_Foliate>$(ReaderLibrariesDownloads)foliate/foliate-js-$(FoliateJsCommit)/</_Foliate>
+    </PropertyGroup>
+    <ItemGroup>
+      <!-- What the reader uses: the minified library and worker, the viewer, and their data files.
+           Not the scripting sandbox (quickjs): BookWorm never runs JavaScript from PDFs. -->
+      <_PdfJsFile Include="$(_PdfJs)LICENSE;$(_PdfJs)build/pdf.min.mjs;$(_PdfJs)build/pdf.worker.min.mjs" />
+      <_PdfJsFile Include="$(_PdfJs)web/pdf_viewer.mjs;$(_PdfJs)web/pdf_viewer.css;$(_PdfJs)web/images/**" />
+      <_PdfJsFile Include="$(_PdfJs)cmaps/**;$(_PdfJs)standard_fonts/**;$(_PdfJs)iccs/**;$(_PdfJs)wasm/**" Exclude="$(_PdfJs)wasm/quickjs*" />
+      <!-- foliate-js modules and the zip and fflate libraries it bundles; not its own old copy of PDF.js,
+           sample reader or tests. -->
+      <_FoliateFile Include="$(_Foliate)LICENSE;$(_Foliate)*.js;$(_Foliate)vendor/*.js"
+                    Exclude="$(_Foliate)reader.js;$(_Foliate)eslint.config.js;$(_Foliate)rollup.config.js" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PdfJsFile)" DestinationFiles="@(_PdfJsFile->'$(ReaderLibrariesFolder)pdfjs-dist/$([MSBuild]::MakeRelative('$(_PdfJs)', '%(FullPath)'))')" />
+    <Copy SourceFiles="@(_FoliateFile)" DestinationFiles="@(_FoliateFile->'$(ReaderLibrariesFolder)foliate-js/$([MSBuild]::MakeRelative('$(_Foliate)', '%(FullPath)'))')" />
+    <WriteLinesToFile File="$(ReaderLibrariesMarker)" Lines="pdfjs-dist $(PdfJsVersion);foliate-js $(FoliateJsCommit)" Overwrite="true" />
+    <RemoveDir Directories="$(ReaderLibrariesDownloads)" />
+
+    <!-- In case this build is the one that downloaded them (e.g. with no-restore). -->
+    <ItemGroup>
+      <Content Include="$(ReaderLibrariesFolder)**" Exclude="@(Content)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

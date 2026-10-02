@@ -18,6 +18,19 @@ internal sealed class WebAccountService(
 
     public void OpenAccountSettings() => navigation.NavigateTo("Account/Manage", forceLoad: true);
 
+    public async Task SignOutEverywhereAsync()
+    {
+        try
+        {
+            await api.SignOutEverywhereAsync();
+        }
+        finally
+        {
+            authenticationState.MarkSignedOut();
+            navigation.NavigateTo("Account/Login", forceLoad: true);
+        }
+    }
+
     public async Task SignOutAsync()
     {
         await api.LogoutAsync();

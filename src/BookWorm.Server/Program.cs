@@ -32,13 +32,27 @@ builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 builder.Services.AddSingleton<SetupState>();
 
-// Accounts and sign-in: ASP.NET Core Identity with cookies for the web app.
+// Accounts and sign-in: ASP.NET Core Identity with cookies for the web app, and bearer tokens for
+// the mobile app (see AuthEndpoints).
+builder.Services.Configure<AppClientOptions>(builder.Configuration.GetSection(AppClientOptions.Section));
+var appClientOptions = builder.Configuration.GetSection(AppClientOptions.Section).Get<AppClientOptions>() ?? new AppClientOptions();
 builder.Services.AddAuthentication(options =>
     {
-        options.DefaultScheme = IdentityConstants.ApplicationScheme;
+        options.DefaultScheme = AuthSchemes.CookieOrBearer;
         options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
     })
+    .AddPolicyScheme(AuthSchemes.CookieOrBearer, "Session cookie or bearer token", options => options.ForwardDefaultSelector = AuthSchemes.Select)
+    .AddBearerToken(IdentityConstants.BearerScheme, options =>
+    {
+        options.BearerTokenExpiration = TimeSpan.FromMinutes(appClientOptions.AccessTokenMinutes);
+        options.RefreshTokenExpiration = TimeSpan.FromDays(appClientOptions.RefreshTokenDays);
+    })
     .AddIdentityCookies();
+builder.Services.AddSingleton<MobileCodes>();
+builder.Services.AddCors(options => options.AddPolicy(AppClientOptions.CorsPolicy, policy => policy
+    .WithOrigins(appClientOptions.Origins)
+    .WithHeaders("Authorization", "Content-Type")
+    .WithMethods("GET", "PUT", "POST", "DELETE")));
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -86,7 +100,7 @@ builder.Services.AddIdentityCore<AppUser>(options =>
     })
     .AddRoles<IdentityRole<Guid>>()
     .AddEntityFrameworkStores<AppDbContext>()
-    .AddSignInManager()
+    .AddSignInManager<AppSignInManager>()
     .AddDefaultTokenProviders();
 
 // Book files, covers and exported notes on disk; backups.
@@ -159,6 +173,7 @@ app.UseWhen(context => !IsApiRequest(context), pages =>
 app.UseSetupRedirect();
 
 // Explicitly after the error handling above, so rejected API calls (401/403) also get problem details.
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
@@ -169,6 +184,7 @@ app.MapRazorComponents<App>()
     .AddAdditionalAssemblies(typeof(BookWorm.UI.Routes).Assembly);
 
 app.MapAdditionalIdentityEndpoints().ExcludeFromDescription();
+app.MapMobileSignIn();
 app.MapBookWormApi();
 app.MapHealthChecks("/health");
 app.MapOpenApi();

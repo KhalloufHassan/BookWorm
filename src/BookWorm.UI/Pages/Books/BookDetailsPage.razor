@@ -87,6 +87,7 @@ else
                 <MudButton Href="@($"books/{_book.Id}/edit")" Variant="@(_book.Files.Count > 0 ? Variant.Outlined : Variant.Filled)" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit">Edit</MudButton>
                 <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Rounded.DeleteOutline" OnClick="DeleteAsync">Delete</MudButton>
             </div>
+            <BookOfflineSection Book="_book" />
         </div>
     </section>
 

@@ -1,0 +1,92 @@
+@page "/downloads"
+@attribute [Authorize]
+@implements IDisposable
+@inject IOfflineLibrary Offline
+@inject IDialogService Dialogs
+
+<PageTitle>Downloaded · BookWorm</PageTitle>
+
+<MudText Typo="Typo.h3" HtmlTag="h1" Class="mb-2">Downloaded</MudText>
+<MudText Color="Color.Secondary" Class="mb-6">
+    Books on this device, readable without an internet connection. Download a book from its page.
+</MudText>
+
+@if (!Offline.IsSupported)
+{
+    <MudAlert Severity="Severity.Info">Offline reading is available in the BookWorm app.</MudAlert>
+}
+else if (_downloads is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_downloads.Count == 0)
+{
+    <MudText Color="Color.Secondary">Nothing downloaded yet.</MudText>
+}
+else
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        @Labels.Count(_downloads.Count, "book") · @FileSizes.Describe(_downloads.Sum(d => d.SizeBytes))
+    </MudText>
+    <ul class="bw-downloads">
+        @foreach (var download in _downloads)
+        {
+            <li class="bw-download">
+                <a href="@($"books/{download.BookId}/read")" class="bw-download__cover" aria-label="@($"Read {download.Title}")">
+                    <BookCover Id="download.BookId" Title="@download.Title" Author="@download.Authors.FirstOrDefault()?.Name" CoverVersion="download.CoverVersion" Size="tiny" />
+                </a>
+                <div class="bw-download__body">
+                    <a href="@($"books/{download.BookId}")" class="bw-download__title">@download.Title</a>
+                    <span class="bw-muted">@Labels.Authors(download.Authors)</span>
+                    <span class="bw-muted">
+                        @BookFormats.Label(download.Format) · @FileSizes.Describe(download.SizeBytes)
+                        @if (download.Progress is { } progress)
+                        {
+                            <text> · @Labels.Percent(progress) read</text>
+                        }
+                        @if (download.PendingChanges > 0)
+                        {
+                            <text> · @Labels.Count(download.PendingChanges, "change") waiting to sync</text>
+                        }
+                    </span>
+                </div>
+                <MudButton Href="@($"books/{download.BookId}/read")" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small">Read</MudButton>
+                <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" aria-label="@($"Remove the download of {download.Title}")"
+                               OnClick="@(() => RemoveAsync(download))" />
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private IReadOnlyList<DownloadedBook> _downloads;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Offline.Changed += OnOfflineChanged;
+        if (Offline.IsSupported)
+        {
+            _downloads = await Offline.GetDownloadsAsync();
+        }
+    }
+
+    private async Task RemoveAsync(DownloadedBook download)
+    {
+        var message = download.PendingChanges > 0
+            ? $"Changes made offline haven't reached the server yet ({Labels.Count(download.PendingChanges, "change")}) and will be lost. Connect to the internet first to keep them."
+            : $"“{download.Title}” stays in your library; only the copy on this device is removed.";
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Remove the download?", message, yesText: "Remove", cancelText: "Keep it");
+        if (confirmed == true)
+        {
+            await Offline.RemoveAsync(download.BookId);
+        }
+    }
+
+    private void OnOfflineChanged() => InvokeAsync(async () =>
+    {
+        _downloads = await Offline.GetDownloadsAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Offline.Changed -= OnOfflineChanged;
+}
