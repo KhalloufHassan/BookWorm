@@ -1830,3 +1830,276 @@ div.bw-highlight__quote {
     line-height: 1.8;
 }
 
+
+/* Reading calendar */
+
+.bw-cal-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 1rem;
+}
+
+.bw-cal-toolbar__title {
+    flex: 1;
+    margin-left: 0.5rem !important;
+}
+
+.bw-cal-month {
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.bw-cal-month__weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    font-size: 0.8rem;
+    color: var(--mud-palette-text-secondary);
+    text-align: center;
+    padding: 0.4rem 0;
+}
+
+.bw-cal-week {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    row-gap: 3px;
+    min-height: 7rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}
+
+.bw-cal-week:last-child {
+    border-bottom: 0;
+}
+
+/* Each day is a button filling its whole column, under the bars. */
+.bw-cal-day {
+    grid-row: 1 / -1;
+    margin-bottom: -0.35rem;
+    padding: 0.35rem 0.5rem;
+    border: 0;
+    border-right: 1px solid var(--mud-palette-lines-default);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    cursor: pointer;
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+}
+
+.bw-cal-day:nth-child(7) {
+    border-right: 0;
+}
+
+.bw-cal-day:hover {
+    background: color-mix(in srgb, var(--mud-palette-primary) 6%, transparent);
+}
+
+.bw-cal-day:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: -2px;
+}
+
+.bw-cal-day--outside {
+    color: var(--mud-palette-text-disabled);
+    background: color-mix(in srgb, var(--mud-palette-lines-default) 25%, transparent);
+}
+
+.bw-cal-day__number {
+    font-size: 0.85rem;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    line-height: 1.6rem;
+    border-radius: 999px;
+    text-align: center;
+}
+
+.bw-cal-day--today .bw-cal-day__number {
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+    font-weight: 600;
+}
+
+/* A read: a bar from its start day to its finish day, cut at week edges. */
+.bw-cal-bar {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    height: 1.75rem;
+    margin: 0 -1px;
+    padding: 0 0.4rem 0 0.15rem;
+    background: color-mix(in srgb, var(--mud-palette-primary) 16%, var(--mud-palette-surface));
+    color: inherit;
+    text-decoration: none;
+    font-size: 0.8rem;
+}
+
+.bw-cal-bar:hover {
+    background: color-mix(in srgb, var(--mud-palette-primary) 28%, var(--mud-palette-surface));
+}
+
+.bw-cal-bar--start {
+    margin-left: 0.3rem;
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}
+
+.bw-cal-bar--end {
+    margin-right: 0.3rem;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    box-shadow: inset -3px 0 0 var(--mud-palette-primary);
+}
+
+.bw-cal-bar__cover .bw-cover--tiny {
+    width: 1rem;
+}
+
+.bw-cal-bar__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.bw-cal-more {
+    position: relative;
+    z-index: 1;
+    justify-self: start;
+    margin-left: 0.4rem;
+    padding: 0 0.3rem;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--mud-palette-text-secondary);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.bw-cal-more:hover {
+    color: var(--mud-palette-primary);
+}
+
+.bw-cal-day-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    gap: 0.75rem;
+}
+
+.bw-cal-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.75rem;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 12px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.bw-cal-entry:hover {
+    border-color: var(--mud-palette-primary);
+}
+
+.bw-cal-entry .bw-cover {
+    width: 4.5rem;
+    flex: none;
+}
+
+.bw-cal-entry__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    font-size: 0.9rem;
+}
+
+.bw-cal-entry__title {
+    font-family: var(--bw-serif);
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.bw-cal-year {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 1rem;
+}
+
+.bw-cal-year__heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.bw-cal-year__heading:hover h3 {
+    color: var(--mud-palette-primary);
+}
+
+.bw-cal-year__covers {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr));
+    gap: 0.6rem;
+    margin-top: 0.85rem;
+}
+
+.bw-cal-year__cover {
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.15s ease;
+}
+
+.bw-cal-year__cover:hover {
+    transform: translateY(-2px);
+}
+
+.bw-cal-year__cover .bw-cover {
+    font-size: 0.42rem;
+}
+
+/* Phones: bars keep only their covers. */
+@media (max-width: 600px) {
+    .bw-cal-week {
+        min-height: 5.5rem;
+    }
+
+    .bw-cal-day {
+        padding: 0.25rem;
+        justify-content: center;
+    }
+
+    .bw-cal-bar__title {
+        display: none;
+    }
+
+    .bw-cal-bar {
+        padding: 0 0.15rem;
+    }
+
+    .bw-cal-more {
+        margin-left: 0.1rem;
+        font-size: 0.7rem;
+    }
+
+    .bw-cal-day-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
