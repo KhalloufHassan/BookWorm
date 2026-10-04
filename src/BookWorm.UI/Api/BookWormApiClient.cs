@@ -160,6 +160,14 @@ public sealed class BookWormApiClient(HttpClient http)
             "api/stats" + QueryStrings.Build(("year", year?.ToString(CultureInfo.InvariantCulture)), ("timeZone", timeZone)),
             cancellationToken);
 
+    public Task<List<CalendarRead>> GetCalendarAsync(DateOnly from, DateOnly to, string timeZone, CancellationToken cancellationToken = default) =>
+        GetAsync<List<CalendarRead>>(
+            "api/calendar" + QueryStrings.Build(
+                ("from", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                ("to", to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                ("timeZone", timeZone)),
+            cancellationToken);
+
     // Reads
 
     public Task<List<ReadDetails>> GetReadsAsync(Guid bookId, CancellationToken cancellationToken = default) =>

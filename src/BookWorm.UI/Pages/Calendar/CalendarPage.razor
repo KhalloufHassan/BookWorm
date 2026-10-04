@@ -1,0 +1,280 @@
+@page "/calendar"
+@attribute [Authorize]
+@using System.Globalization
+@inject BookWormApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Calendar · BookWorm</PageTitle>
+
+<PageHeader Title="Reading calendar" Subtitle="The books you've read, day by day">
+    <MudToggleGroup T="string" Value="CurrentView" ValueChanged="ShowViewAsync" SelectionMode="SelectionMode.SingleSelection"
+                    Size="Size.Small" Outlined="true" CheckMark="false">
+        <MudToggleItem Value="@DayView">Day</MudToggleItem>
+        <MudToggleItem Value="@MonthView">Month</MudToggleItem>
+        <MudToggleItem Value="@YearView">Year</MudToggleItem>
+    </MudToggleGroup>
+</PageHeader>
+
+<div class="bw-cal-toolbar">
+    <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" OnClick="@(() => Move(-1))" aria-label="@($"Previous {CurrentView}")" />
+    <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" OnClick="@(() => Move(1))" aria-label="@($"Next {CurrentView}")" />
+    <MudText Typo="Typo.h5" HtmlTag="h2" Class="bw-cal-toolbar__title">@PeriodTitle</MudText>
+    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => Show(CurrentView, _today))" Disabled="@ShowsToday">Today</MudButton>
+</div>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_reads is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-8" />
+    }
+}
+else if (CurrentView == YearView)
+{
+    <div class="bw-cal-year">
+        @for (var month = 1; month <= 12; month++)
+        {
+            var monthNumber = month;
+            var finished = _reads.Where(r => r.Finished.Year == _date.Year && r.Finished.Month == monthNumber).OrderBy(r => r.Finished).ToList();
+            <MudPaper Elevation="0" Class="bw-section bw-cal-year__month">
+                <button type="button" class="bw-cal-year__heading" @onclick="@(() => Show(MonthView, new DateOnly(_date.Year, monthNumber, 1)))">
+                    <MudText Typo="Typo.h6" HtmlTag="h3">@MonthName(monthNumber)</MudText>
+                    <span class="bw-muted">@(finished.Count == 0 ? "–" : Labels.Count(finished.Count, "book"))</span>
+                </button>
+                @if (finished.Count > 0)
+                {
+                    <div class="bw-cal-year__covers">
+                        @foreach (var read in finished)
+                        {
+                            <a href="@($"books/{read.BookId}")" title="@($"{read.Title}, finished {Labels.Date(read.Finished)}")" class="bw-cal-year__cover">
+                                <BookCover Id="read.BookId" Title="@read.Title" Author="@read.Authors.FirstOrDefault()?.Name" CoverVersion="read.CoverVersion" Size="small" />
+                            </a>
+                        }
+                    </div>
+                }
+            </MudPaper>
+        }
+    </div>
+    @if (_reads.All(r => r.Finished.Year != _date.Year))
+    {
+        <MudText Color="Color.Secondary" Class="mt-4">No books finished in @_date.Year. Finished reads with a finish date show up here.</MudText>
+    }
+}
+else if (CurrentView == MonthView)
+{
+    <div class="bw-cal-month" role="grid" aria-label="@PeriodTitle">
+        <div class="bw-cal-month__weekdays" role="row">
+            @foreach (var weekday in Weekdays)
+            {
+                <span role="columnheader">@weekday</span>
+            }
+        </div>
+        @foreach (var monday in CalendarLayout.MonthWeeks(_date.Year, _date.Month))
+        {
+            var bars = CalendarLayout.Week(monday, _reads);
+            var shownLanes = Math.Min(bars.Count == 0 ? 0 : bars.Max(b => b.Lane) + 1, MaxLanes);
+            var hidden = bars.Where(b => b.Lane >= MaxLanes).ToList();
+            var rows = shownLanes + (hidden.Count > 0 ? 1 : 0);
+            <div class="bw-cal-week" role="row" style="@($"grid-template-rows: 1.9rem repeat({rows}, auto) 1fr")">
+                @for (var column = 0; column < 7; column++)
+                {
+                    var day = monday.AddDays(column);
+                    <button type="button" class="@DayClass(day)" style="@($"grid-column: {column + 1}")" role="gridcell"
+                            @onclick="@(() => Show(DayView, day))" aria-label="@DayTitle(day)">
+                        <span class="bw-cal-day__number">@day.Day</span>
+                    </button>
+                }
+                @foreach (var bar in bars.Where(b => b.Lane < MaxLanes))
+                {
+                    <a href="@($"books/{bar.Read.BookId}")" class="@BarClass(bar)" title="@BarTooltip(bar.Read)"
+                       style="@($"grid-column: {bar.FirstColumn + 1} / span {bar.Span}; grid-row: {bar.Lane + 2}")">
+                        <span class="bw-cal-bar__cover"><BookCover Id="bar.Read.BookId" Title="@bar.Read.Title" CoverVersion="bar.Read.CoverVersion" Size="tiny" /></span>
+                        <span class="bw-cal-bar__title">@bar.Read.Title</span>
+                    </a>
+                }
+                @for (var column = 0; column < 7; column++)
+                {
+                    var day = monday.AddDays(column);
+                    var more = hidden.Count(b => column >= b.FirstColumn && column < b.FirstColumn + b.Span);
+                    if (more > 0)
+                    {
+                        <button type="button" class="bw-cal-more" style="@($"grid-column: {column + 1}; grid-row: {shownLanes + 2}")"
+                                @onclick="@(() => Show(DayView, day))">+@more more</button>
+                    }
+                }
+            </div>
+        }
+    </div>
+    @if (_reads.Count == 0)
+    {
+        <MudText Color="Color.Secondary" Class="mt-4">No finished reads in @PeriodTitle.</MudText>
+    }
+}
+else
+{
+    var finishedToday = _reads.Where(r => r.Finished == _date).ToList();
+    var reading = _reads.Except(finishedToday).ToList();
+    @if (_reads.Count == 0)
+    {
+        <EmptyState Icon="@Icons.Material.Rounded.EventBusy" Title="Nothing read on this day" Text="Books you finished, or were in the middle of, on this day show up here." />
+    }
+    @if (finishedToday.Count > 0)
+    {
+        <MudText Typo="Typo.h6" HtmlTag="h3" Class="mb-2">Finished</MudText>
+        <div class="bw-cal-day-list mb-6">
+            @foreach (var read in finishedToday)
+            {
+                @DayEntry(read)
+            }
+        </div>
+    }
+    @if (reading.Count > 0)
+    {
+        <MudText Typo="Typo.h6" HtmlTag="h3" Class="mb-2">Reading</MudText>
+        <div class="bw-cal-day-list">
+            @foreach (var read in reading)
+            {
+                @DayEntry(read)
+            }
+        </div>
+    }
+}
+
+@code {
+    private const string DayView = "day";
+    private const string MonthView = "month";
+    private const string YearView = "year";
+
+    /// <summary>Bars shown per week before the rest are summed up as "+N more".</summary>
+    private const int MaxLanes = 3;
+
+    private static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
+    private static readonly string[] Weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly _date;
+    private List<CalendarRead> _reads;
+    private string _error;
+    private (string View, DateOnly From, DateOnly To) _loaded;
+
+    /// <summary>day, month or year; month when missing.</summary>
+    [SupplyParameterFromQuery]
+    public string View { get; set; }
+
+    /// <summary>The day shown (yyyy-MM-dd), or any day in the month or year shown; today when missing.</summary>
+    [SupplyParameterFromQuery]
+    public string Date { get; set; }
+
+    private string CurrentView => View is DayView or YearView ? View : MonthView;
+
+    private string PeriodTitle => CurrentView switch
+    {
+        DayView => _date.ToString("dddd, d MMMM yyyy", Culture),
+        YearView => _date.Year.ToString(Culture),
+        _ => _date.ToString("MMMM yyyy", Culture),
+    };
+
+    private bool ShowsToday => CurrentView switch
+    {
+        DayView => _date == _today,
+        YearView => _date.Year == _today.Year,
+        _ => _date.Year == _today.Year && _date.Month == _today.Month,
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _date = DateOnly.TryParseExact(Date, "yyyy-MM-dd", Culture, DateTimeStyles.None, out var date) ? date : _today;
+
+        var (from, to) = CurrentView switch
+        {
+            DayView => (_date, _date),
+            YearView => (new DateOnly(_date.Year, 1, 1), new DateOnly(_date.Year, 12, 31)),
+            _ => MonthRange(),
+        };
+        if (_reads is not null && _loaded == (CurrentView, from, to))
+        {
+            return;
+        }
+
+        _reads = null;
+        _error = null;
+        try
+        {
+            _reads = await Api.GetCalendarAsync(from, to, TimeZoneInfo.Local.Id);
+            _loaded = (CurrentView, from, to);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private (DateOnly From, DateOnly To) MonthRange()
+    {
+        var weeks = CalendarLayout.MonthWeeks(_date.Year, _date.Month);
+        return (weeks[0], weeks[^1].AddDays(6));
+    }
+
+    private Task ShowViewAsync(string view)
+    {
+        Show(view, _date);
+        return Task.CompletedTask;
+    }
+
+    private void Show(string view, DateOnly date) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(new Dictionary<string, object>
+        {
+            ["view"] = view,
+            ["date"] = date.ToString("yyyy-MM-dd", Culture),
+        }));
+
+    private void Move(int direction) => Show(CurrentView, CurrentView switch
+    {
+        DayView => _date.AddDays(direction),
+        YearView => _date.AddYears(direction),
+        _ => new DateOnly(_date.Year, _date.Month, 1).AddMonths(direction),
+    });
+
+    private static string MonthName(int month) => Culture.DateTimeFormat.GetMonthName(month);
+
+    private static string DayTitle(DateOnly day) => day.ToString("dddd, d MMMM yyyy", Culture);
+
+    private string DayClass(DateOnly day) =>
+        "bw-cal-day"
+        + (day.Month != _date.Month ? " bw-cal-day--outside" : "")
+        + (day == _today ? " bw-cal-day--today" : "");
+
+    private static string BarClass(CalendarBar bar) =>
+        "bw-cal-bar"
+        + (bar.StartsHere ? " bw-cal-bar--start" : "")
+        + (bar.EndsHere ? " bw-cal-bar--end" : "");
+
+    private static string BarTooltip(CalendarRead read) => $"{read.Title}: {Span(read)}";
+
+    private static string Span(CalendarRead read) => read.Started is { } started && started != read.Finished
+        ? $"{Labels.Date(started)} – {Labels.Date(read.Finished)} ({Labels.Count(read.Finished.DayNumber - started.DayNumber + 1, "day")})"
+        : $"finished {Labels.Date(read.Finished)}";
+
+    private RenderFragment DayEntry(CalendarRead read) =>
+        @<a class="bw-cal-entry" href="@($"books/{read.BookId}")">
+            <BookCover Id="read.BookId" Title="@read.Title" Author="@read.Authors.FirstOrDefault()?.Name" CoverVersion="read.CoverVersion" Size="small" />
+            <span class="bw-cal-entry__text">
+                <span class="bw-cal-entry__title">@read.Title</span>
+                <span class="bw-muted">@Labels.Authors(read.Authors)</span>
+                <span class="bw-muted">@Span(read)@DayOf(read)</span>
+                @if (read.Rating is not null)
+                {
+                    <RatingStars Value="read.Rating" />
+                }
+            </span>
+        </a>;
+
+    private string DayOf(CalendarRead read) => read.Started is { } started && started <= _date && read.Finished > _date
+        ? $" · day {_date.DayNumber - started.DayNumber + 1}"
+        : "";
+}

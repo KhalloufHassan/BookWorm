@@ -11,10 +11,15 @@ internal static class StatsEndpoints
     /// <summary>A day counts toward a streak with at least this much reading.</summary>
     private const int StreakMinimumMinutes = 1;
 
+    /// <summary>The calendar shows at most a year at a time.</summary>
+    private const int CalendarMaxDays = 366;
+
     public static void MapStatsEndpoints(this IEndpointRouteBuilder api)
     {
         api.MapGet("/stats", GetStats).WithTags("Statistics")
             .WithSummary("Reading statistics for a year. Pass your IANA time zone (e.g. Europe/Berlin) so days match your clock.");
+        api.MapGet("/calendar", GetCalendar).WithTags("Statistics")
+            .WithSummary("Finished reads between two dates (inclusive) that were in progress or finished in that range, for the reading calendar.");
     }
 
     private static async Task<Results<Ok<ReadingStats>, ValidationProblem>> GetStats(
@@ -132,6 +137,69 @@ internal static class StatsEndpoints
             ratingDistribution,
             topAuthors.Select(a => new RankedItem(a.Id, a.Name, a.Count)).ToList(),
             topTags.Select(t => new RankedItem(t.Id, t.Name, t.Count)).ToList()));
+    }
+
+    private static async Task<Results<Ok<List<CalendarRead>>, ValidationProblem>> GetCalendar(
+        [FromQuery] DateOnly from,
+        [FromQuery] DateOnly to,
+        [FromQuery] string timeZone,
+        AppDbContext db,
+        CancellationToken cancellationToken)
+    {
+        if (!TryFindTimeZone(timeZone, out var zone))
+        {
+            return ApiErrors.Validation("timeZone", "Unknown time zone.");
+        }
+
+        if (to < from || to.DayNumber - from.DayNumber >= CalendarMaxDays)
+        {
+            return ApiErrors.Validation("to", $"Pick an end date on or after the start date, at most {CalendarMaxDays} days later.");
+        }
+
+        // A day of slack either side covers every UTC offset; the exact local dates are checked below.
+        var earliest = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddDays(-1);
+        var latest = new DateTimeOffset(to.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddDays(2);
+
+        var reads = await db.Reads.AsNoTracking()
+            .Where(r => r.Status == ReadStatus.Finished && r.FinishedAt != null)
+            .Where(r => r.FinishedAt >= earliest && (r.StartedAt ?? r.FinishedAt) < latest)
+            .Select(r => new
+            {
+                r.Id,
+                r.BookId,
+                r.Book.Title,
+                Authors = r.Book.Authors.OrderBy(ba => ba.Position).Select(ba => new AuthorRef(ba.Author.Id, ba.Author.Name)).ToList(),
+                r.Book.CoverUpdatedAt,
+                r.Book.Rating,
+                r.StartedAt,
+                FinishedAt = r.FinishedAt.Value,
+            })
+            .AsSplitQuery()
+            .ToListAsync(cancellationToken);
+
+        DateOnly LocalDate(DateTimeOffset instant) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime);
+
+        var calendar = reads
+            .Select(r =>
+            {
+                var finished = LocalDate(r.FinishedAt);
+                DateOnly? started = r.StartedAt is { } s ? LocalDate(s) : null;
+
+                // A start after the finish is a typing mistake; show the read on its finish day only.
+                if (started > finished)
+                {
+                    started = null;
+                }
+
+                return new CalendarRead(r.Id, r.BookId, r.Title, r.Authors, Covers.Version(r.CoverUpdatedAt), r.Rating, started, finished);
+            })
+            .Where(r => r.Finished >= from && (r.Started ?? r.Finished) <= to)
+            .OrderBy(r => r.Started ?? r.Finished)
+            .ThenBy(r => r.Finished)
+            .ThenBy(r => r.Title)
+            .ToList();
+
+        return TypedResults.Ok(calendar);
     }
 
     /// <summary>
