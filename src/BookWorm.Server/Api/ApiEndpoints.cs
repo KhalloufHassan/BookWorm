@@ -38,6 +38,7 @@ internal static class ApiEndpoints
         signedIn.MapNotesEndpoints();
         signedIn.MapAuthorEndpoints();
         signedIn.MapTagEndpoints();
+        signedIn.MapCollectionEndpoints();
         signedIn.MapStatsEndpoints();
         signedIn.MapAdminUserEndpoints();
         signedIn.MapBackupEndpoints();

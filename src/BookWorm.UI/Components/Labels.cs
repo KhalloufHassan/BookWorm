@@ -59,6 +59,23 @@ public static class Labels
         _ => Color.Default,
     };
 
+    public static readonly CollectionType[] CollectionTypes = Enum.GetValues<CollectionType>();
+
+    public static string For(CollectionType type) => type switch
+    {
+        CollectionType.Series => "Series",
+        CollectionType.Volumes => "Volumes",
+        CollectionType.Related => "Related books",
+        _ => type.ToString(),
+    };
+
+    public static string IconFor(CollectionType type) => type switch
+    {
+        CollectionType.Series => Icons.Material.Rounded.CollectionsBookmark,
+        CollectionType.Volumes => Icons.Material.Rounded.LibraryBooks,
+        _ => Icons.Material.Rounded.Hub,
+    };
+
     public static readonly HighlightColor[] HighlightColors = Enum.GetValues<HighlightColor>();
 
     /// <summary>The highlight colours as CSS, matching the reader (reader-common.js).</summary>

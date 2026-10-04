@@ -1,0 +1,101 @@
+@inject BookWormApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField T="string" @bind-Value="_search" Placeholder="Search your library" Variant="Variant.Outlined" AutoFocus="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true"
+                      DebounceInterval="300" OnDebounceIntervalElapsed="@(_ => SearchAsync())" OnClearButtonClick="@(_ => SearchAsync())" />
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+        }
+        else if (_books is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-4" />
+        }
+        else if (_books.Count == 0)
+        {
+            <MudText Color="Color.Secondary" Class="mt-4">No books to add@(string.IsNullOrWhiteSpace(_search) ? "." : " match your search.")</MudText>
+        }
+        else
+        {
+            <MudList T="Guid" Class="bw-add-books mt-2" Dense="true">
+                @foreach (var book in _books)
+                {
+                    <MudListItem T="Guid" Value="book.Id" OnClick="@(() => Toggle(book.Id))">
+                        <div class="bw-title-cell">
+                            <MudCheckBox T="bool" Value="@_selected.Contains(book.Id)" ValueChanged="@(_ => Toggle(book.Id))" Color="Color.Primary" Dense="true"
+                                         aria-label="@($"Select {book.Title}")" />
+                            <BookCover Id="book.Id" Title="@book.Title" CoverVersion="book.CoverVersion" Size="tiny" />
+                            <div>
+                                <div class="bw-strong">@book.Title</div>
+                                <div class="bw-muted">@Labels.Authors(book.Authors)</div>
+                            </div>
+                        </div>
+                    </MudListItem>
+                }
+            </MudList>
+            @if (_total > _books.Count)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">Showing the first @_books.Count of @_total. Search to narrow it down.</MudText>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_selected.Count == 0" OnClick="Add">
+            @(_selected.Count == 0 ? "Add" : $"Add {Labels.Count(_selected.Count, "book")}")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private const int PageSize = 50;
+
+    /// <summary>Selected books, in the order they were picked; that's the order they are added in.</summary>
+    private readonly List<Guid> _selected = [];
+    private List<BookSummary> _books;
+    private int _total;
+    private string _search;
+    private string _error;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    /// <summary>Books already in the collection; they aren't offered.</summary>
+    [Parameter]
+    public IReadOnlyCollection<Guid> ExcludedIds { get; set; } = [];
+
+    protected override Task OnInitializedAsync() => SearchAsync();
+
+    private async Task SearchAsync()
+    {
+        try
+        {
+            // Ask for extra rows so hiding the books already in the collection still leaves a full page.
+            var result = await Api.GetBooksAsync(new BookListQuery
+            {
+                Search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
+                PageSize = Math.Min(PageSize + ExcludedIds.Count, ApiLimits.MaxPageSize),
+            });
+            _books = result.Items.Where(b => !ExcludedIds.Contains(b.Id)).Take(PageSize).ToList();
+            _total = result.TotalCount - ExcludedIds.Count(id => result.Items.Any(b => b.Id == id));
+            _error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private void Toggle(Guid id)
+    {
+        if (!_selected.Remove(id))
+        {
+            _selected.Add(id);
+        }
+    }
+
+    private void Add() => MudDialog.Close(DialogResult.Ok(_selected.ToList()));
+}

@@ -1,0 +1,76 @@
+@inject BookWormApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="collection-form">
+            <DataAnnotationsValidator />
+            <MudStack Spacing="4">
+                <MudTextField Label="Name" @bind-Value="_form.Name" For="@(() => _form.Name)" Variant="Variant.Outlined" AutoFocus="true" />
+                <MudSelect T="CollectionType" Label="Type" @bind-Value="_form.Type" Variant="Variant.Outlined">
+                    @foreach (var type in Labels.CollectionTypes)
+                    {
+                        <MudSelectItem Value="type">@Labels.For(type)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudStack>
+        </EditForm>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton ButtonType="ButtonType.Submit" form="collection-form" Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly CollectionForm _form = new();
+    private string _error;
+    private bool _saving;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    /// <summary>The collection to edit (id, name, type and version are used), or null to create a new one.</summary>
+    [Parameter]
+    public CollectionSummary Collection { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _form.Name = Collection?.Name ?? "";
+        _form.Type = Collection?.Type ?? CollectionType.Series;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            var saved = Collection is null
+                ? await Api.CreateCollectionAsync(new CreateCollectionRequest { Name = _form.Name.Trim(), Type = _form.Type })
+                : await Api.UpdateCollectionAsync(Collection.Id,
+                    new UpdateCollectionRequest { Name = _form.Name.Trim(), Type = _form.Type, Version = Collection.Version });
+            MudDialog.Close(DialogResult.Ok(saved));
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class CollectionForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Give the collection a name.")]
+        [System.ComponentModel.DataAnnotations.StringLength(ApiLimits.CollectionNameMaxLength)]
+        public string Name { get; set; } = "";
+
+        public CollectionType Type { get; set; }
+    }
+}

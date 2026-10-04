@@ -12,6 +12,9 @@ internal static class LibraryBuilder
     public static Task<TagSummary> AddTagAsync(this BookWormApiClient api, string name) =>
         api.CreateTagAsync(new CreateTagRequest { Name = name });
 
+    public static Task<CollectionDetails> AddCollectionAsync(this BookWormApiClient api, string name, CollectionType type = CollectionType.Series) =>
+        api.CreateCollectionAsync(new CreateCollectionRequest { Name = name, Type = type });
+
     public static Task<BookDetails> AddBookAsync(
         this BookWormApiClient api,
         string title,
@@ -41,6 +44,7 @@ internal static class LibraryBuilder
         OriginalPublicationDate = book.OriginalPublicationDate,
         AuthorIds = book.Authors.Select(a => a.Id).ToList(),
         TagIds = book.Tags.Select(t => t.Id).ToList(),
+        CollectionIds = book.Collections.Select(c => c.Id).ToList(),
         Version = book.Version,
     };
 }

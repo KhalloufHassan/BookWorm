@@ -115,6 +115,11 @@ internal static class BookEndpoints
 
         book.Tags.AddRange(tags);
 
+        if (await SetCollectionsAsync(db, book, request.CollectionIds, cancellationToken) is { } collectionProblem)
+        {
+            return collectionProblem;
+        }
+
         db.Books.Add(book);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -128,6 +133,7 @@ internal static class BookEndpoints
         var book = await db.Books
             .Include(b => b.Authors)
             .Include(b => b.Tags)
+            .Include(b => b.Collections)
             .SingleOrDefaultAsync(b => b.Id == id, cancellationToken);
         if (book is null)
         {
@@ -181,6 +187,11 @@ internal static class BookEndpoints
         var addedTags = tags.Where(tag => !book.Tags.Contains(tag)).ToList();
         book.Tags.AddRange(addedTags);
 
+        if (await SetCollectionsAsync(db, book, request.CollectionIds, cancellationToken) is { } collectionProblem)
+        {
+            return collectionProblem;
+        }
+
         // Always touch the row, even when only authors or tags changed, so the version check applies.
         db.Entry(book).Property(b => b.UpdatedAt).IsModified = true;
 
@@ -214,6 +225,37 @@ internal static class BookEndpoints
         storage.DeleteBook(userId, id);
         notesExport.Enqueue(userId);
         return TypedResults.NoContent();
+    }
+
+    /// <summary>
+    /// Puts the book in exactly these collections; it joins each new one at the end. Null changes nothing.
+    /// </summary>
+    private static async Task<ValidationProblem> SetCollectionsAsync(
+        AppDbContext db, Book book, List<Guid> requested, CancellationToken cancellationToken)
+    {
+        if (requested is null)
+        {
+            return null;
+        }
+
+        var collectionIds = requested.Distinct().ToList();
+        var lastPositions = await db.Collections
+            .Where(c => collectionIds.Contains(c.Id))
+            .Select(c => new { c.Id, Last = c.Books.Max(cb => (int?)cb.Position) })
+            .ToDictionaryAsync(c => c.Id, c => c.Last, cancellationToken);
+        if (lastPositions.Count != collectionIds.Count)
+        {
+            return ApiErrors.Validation(nameof(CreateBookRequest.CollectionIds), "One or more collections don't exist in your library.");
+        }
+
+        book.Collections.RemoveAll(cb => !collectionIds.Contains(cb.CollectionId));
+        foreach (var collectionId in collectionIds.Where(id => book.Collections.All(cb => cb.CollectionId != id)))
+        {
+            var position = lastPositions[collectionId] is { } last ? last + 1 : 0;
+            book.Collections.Add(new CollectionBook { CollectionId = collectionId, Position = position });
+        }
+
+        return null;
     }
 
     private static void Apply(CreateBookRequest request, Book book)
@@ -333,7 +375,7 @@ internal static class BookEndpoints
         return ordered.ThenBy(b => b.Id);
     }
 
-    private static readonly Expression<Func<Book, BookSummary>> Summary = b => new BookSummary(
+    internal static readonly Expression<Func<Book, BookSummary>> Summary = b => new BookSummary(
         b.Id,
         b.Title,
         b.Status,
@@ -360,6 +402,10 @@ internal static class BookEndpoints
         b.OriginalPublicationDate,
         b.Authors.OrderBy(ba => ba.Position).Select(ba => new AuthorRef(ba.Author.Id, ba.Author.Name)).ToList(),
         b.Tags.OrderBy(t => t.Name).Select(t => new TagRef(t.Id, t.Name)).ToList(),
+        b.Collections
+            .OrderBy(cb => cb.Collection.Name)
+            .Select(cb => new CollectionRef(cb.Collection.Id, cb.Collection.Name, cb.Collection.Type))
+            .ToList(),
         b.Reads
             .OrderBy(r => r.StartedAt == null)
             .ThenByDescending(r => r.StartedAt)

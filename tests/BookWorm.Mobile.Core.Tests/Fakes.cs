@@ -137,7 +137,7 @@ internal sealed class OfflineFixture : IDisposable
         var bookId = Guid.NewGuid();
         var file = EpubFile(Guid.NewGuid());
         var other = new BookFileDetails(Guid.NewGuid(), BookFormat.Pdf, "moby.pdf", 20, "def", DateTimeOffset.UnixEpoch, null, null);
-        var book = new BookDetails(bookId, "Moby-Dick", BookStatus.CurrentlyReading, null, null, null, [], [], [], [file, other], null, 0,
+        var book = new BookDetails(bookId, "Moby-Dick", BookStatus.CurrentlyReading, null, null, null, [], [], [], [], [file, other], null, 0,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1);
         Store.Write(UserId, bookId, OfflineStore.BookJson, book);
         Store.Write(UserId, bookId, OfflineStore.HighlightsJson, new List<HighlightDetails>());

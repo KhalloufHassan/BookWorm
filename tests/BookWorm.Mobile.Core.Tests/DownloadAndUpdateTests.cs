@@ -89,7 +89,7 @@ public sealed class DownloadAndUpdateTests : IDisposable
     private (BookDetails Book, BookFileDetails File) ServeBook(byte[] content, string sha256)
     {
         var file = new BookFileDetails(Guid.NewGuid(), BookFormat.Epub, "moby.epub", content.Length, sha256, DateTimeOffset.UnixEpoch, null, null);
-        var book = new BookDetails(Guid.NewGuid(), "Moby-Dick", BookStatus.WantToRead, null, null, null, [], [], [], [file], 3, 0,
+        var book = new BookDetails(Guid.NewGuid(), "Moby-Dick", BookStatus.WantToRead, null, null, null, [], [], [], [], [file], 3, 0,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1);
         _app.Server.Respond = (request, _) => request.RequestUri.AbsolutePath switch
         {

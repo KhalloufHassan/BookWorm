@@ -41,6 +41,9 @@ public static class ApiLimits
     public const int TitleMaxLength = 500;
     public const int AuthorNameMaxLength = 300;
     public const int TagNameMaxLength = 100;
+    public const int CollectionNameMaxLength = 300;
+    public const int MaxBooksPerCollection = 1000;
+    public const int MaxCollectionsPerBook = 100;
     public const int NotesMaxLength = 1_000_000;
     public const int MaxAuthorsPerBook = 50;
     public const int MaxTagsPerBook = 100;

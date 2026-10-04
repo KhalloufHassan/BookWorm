@@ -77,6 +77,19 @@ else
                 </div>
             }
 
+            @* Null when the book came from an offline copy saved before collections existed. *@
+            @if (_book.Collections is { Count: > 0 })
+            {
+                <div class="bw-book__tags bw-book__collections">
+                    <span class="bw-muted">In</span>
+                    @foreach (var collection in _book.Collections)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined"
+                                 Icon="@Labels.IconFor(collection.Type)" Href="@($"collections/{collection.Id}")">@collection.Name</MudChip>
+                    }
+                </div>
+            }
+
             <div class="bw-book__actions">
                 @if (_book.Files.Count > 0)
                 {

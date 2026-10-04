@@ -19,6 +19,8 @@ public sealed class AppDbContext(
     public DbSet<Book> Books => Set<Book>();
     public DbSet<Author> Authors => Set<Author>();
     public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<Collection> Collections => Set<Collection>();
+    public DbSet<CollectionBook> CollectionBooks => Set<CollectionBook>();
     public DbSet<Read> Reads => Set<Read>();
     public DbSet<BookFile> BookFiles => Set<BookFile>();
     public DbSet<Highlight> Highlights => Set<Highlight>();
@@ -160,6 +162,31 @@ public sealed class AppDbContext(
             tag.HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
 
             tag.HasQueryFilter(t => t.UserId == CurrentUserId);
+        });
+
+        builder.Entity<Collection>(collection =>
+        {
+            // Names are unique per user ignoring case: see the ux_collections_user_id_lower_name index in the migrations.
+            collection.ToTable("collections", table =>
+                table.HasCheckConstraint("ck_collections_type", InList("type", Enum.GetNames<CollectionType>())));
+            collection.Property(c => c.Name).IsRequired().HasMaxLength(ApiLimits.CollectionNameMaxLength);
+            collection.Property(c => c.Type).HasConversion<string>().HasMaxLength(16);
+            collection.Property(c => c.Version).IsRowVersion().HasColumnName("xmin");
+
+            collection.HasOne<AppUser>().WithMany().HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
+
+            collection.HasQueryFilter(c => c.UserId == CurrentUserId);
+        });
+
+        builder.Entity<CollectionBook>(collectionBook =>
+        {
+            collectionBook.ToTable("collection_books");
+            collectionBook.HasKey(cb => new { cb.CollectionId, cb.BookId });
+            collectionBook.HasOne(cb => cb.Collection).WithMany(c => c.Books).HasForeignKey(cb => cb.CollectionId).OnDelete(DeleteBehavior.Cascade);
+            collectionBook.HasOne(cb => cb.Book).WithMany(b => b.Collections).HasForeignKey(cb => cb.BookId).OnDelete(DeleteBehavior.Cascade);
+            collectionBook.HasIndex(cb => cb.BookId);
+
+            collectionBook.HasQueryFilter(cb => cb.Book.UserId == CurrentUserId);
         });
 
         builder.Entity<Read>(read =>

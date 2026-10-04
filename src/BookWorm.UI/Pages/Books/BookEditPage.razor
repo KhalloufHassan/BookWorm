@@ -83,6 +83,9 @@ else
                 <MudItem xs="12" sm="6">
                     <TagPicker @bind-Value="_form.Tags" />
                 </MudItem>
+                <MudItem xs="12" sm="6">
+                    <CollectionPicker @bind-Value="_form.Collections" />
+                </MudItem>
                 <MudItem xs="12">
                     <MudTabs Elevation="0" ApplyEffectsToContainer="true" TabPanelsClass="pt-3" Class="bw-notes-tabs">
                         <MudTabPanel Text="Notes" Icon="@Icons.Material.Rounded.EditNote">
@@ -165,6 +168,7 @@ else
                     OriginalPublicationDate = book.OriginalPublicationDate?.ToDateTime(TimeOnly.MinValue),
                     Authors = book.Authors.ToList(),
                     Tags = book.Tags.ToList(),
+                    Collections = book.Collections?.ToList() ?? [],
                 };
             }
             else
@@ -326,6 +330,7 @@ else
         request.OriginalPublicationDate = form.OriginalPublicationDate is { } date ? DateOnly.FromDateTime(date) : null;
         request.AuthorIds = form.Authors.Select(a => a.Id).ToList();
         request.TagIds = form.Tags.Select(t => t.Id).ToList();
+        request.CollectionIds = form.Collections.Select(c => c.Id).ToList();
     }
 
     private sealed class BookForm
@@ -347,5 +352,7 @@ else
         public List<AuthorRef> Authors { get; set; } = [];
 
         public List<TagRef> Tags { get; set; } = [];
+
+        public List<CollectionRef> Collections { get; set; } = [];
     }
 }

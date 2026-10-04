@@ -205,6 +205,27 @@ public sealed class BookWormApiClient(HttpClient http)
     public Task DeleteTagAsync(Guid id, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, $"api/tags/{id}", null, cancellationToken);
 
+    // Collections
+
+    public Task<List<CollectionSummary>> GetCollectionsAsync(string search = null, CancellationToken cancellationToken = default) =>
+        GetAsync<List<CollectionSummary>>("api/collections" + QueryStrings.ForSearch(search), cancellationToken);
+
+    public Task<CollectionDetails> GetCollectionAsync(Guid id, CancellationToken cancellationToken = default) =>
+        GetAsync<CollectionDetails>($"api/collections/{id}", cancellationToken);
+
+    public Task<CollectionDetails> CreateCollectionAsync(CreateCollectionRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<CollectionDetails>(HttpMethod.Post, "api/collections", request, cancellationToken);
+
+    public Task<CollectionDetails> UpdateCollectionAsync(Guid id, UpdateCollectionRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<CollectionDetails>(HttpMethod.Put, $"api/collections/{id}", request, cancellationToken);
+
+    /// <summary>Replaces the collection's books with these, in this order.</summary>
+    public Task<CollectionDetails> SetCollectionBooksAsync(Guid id, IEnumerable<Guid> bookIds, CancellationToken cancellationToken = default) =>
+        SendAsync<CollectionDetails>(HttpMethod.Put, $"api/collections/{id}/books", new SetCollectionBooksRequest { BookIds = bookIds.ToList() }, cancellationToken);
+
+    public Task DeleteCollectionAsync(Guid id, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Delete, $"api/collections/{id}", null, cancellationToken);
+
     // Administration
 
     public Task<List<AdminUser>> GetUsersAsync(CancellationToken cancellationToken = default) =>

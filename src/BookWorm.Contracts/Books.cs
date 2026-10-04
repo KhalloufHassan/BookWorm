@@ -36,6 +36,7 @@ public sealed record BookDetails(
     DateOnly? OriginalPublicationDate,
     IReadOnlyList<AuthorRef> Authors,
     IReadOnlyList<TagRef> Tags,
+    IReadOnlyList<CollectionRef> Collections,
     IReadOnlyList<ReadDetails> Reads,
     IReadOnlyList<BookFileDetails> Files,
     long? CoverVersion,
@@ -68,6 +69,13 @@ public class CreateBookRequest
 
     [MaxLength(ApiLimits.MaxTagsPerBook)]
     public List<Guid> TagIds { get; set; } = [];
+
+    /// <summary>
+    /// The collections the book is in; it joins a new collection at the end. Null leaves the book's
+    /// collections as they are (for clients that don't know about collections).
+    /// </summary>
+    [MaxLength(ApiLimits.MaxCollectionsPerBook)]
+    public List<Guid> CollectionIds { get; set; }
 }
 
 public sealed class UpdateBookRequest : CreateBookRequest

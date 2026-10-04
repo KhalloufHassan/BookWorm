@@ -1,0 +1,126 @@
+@page "/collections"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Collections · BookWorm</PageTitle>
+
+<PageHeader Title="Collections" Subtitle="@(_collections is null ? null : Labels.Count(_collections.Count, "collection"))">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="@(() => EditAsync(null))">Add collection</MudButton>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_collections is null)
+{
+    @if (_error is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+}
+else if (_collections.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Rounded.CollectionsBookmark" Title="No collections yet"
+                Text="Collections group books that belong together, in your own order: a series, the volumes of an encyclopedia, or books that are related." />
+}
+else
+{
+    <MudPaper Elevation="0" Class="bw-table-wrap">
+        <MudTable T="CollectionSummary" Items="_collections" Hover="true" Elevation="0" Breakpoint="Breakpoint.None"
+                  OnRowClick="@(args => Open(args.Item))" RowClass="bw-clickable">
+            <HeaderContent>
+                <MudTh>Collection</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Books</MudTh>
+                <MudTh Style="width: 1%"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><span class="bw-strong">@context.Name</span></MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Icon="@Labels.IconFor(context.Type)">@Labels.For(context.Type)</MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.BookCount > 0)
+                    {
+                        @Labels.Count(context.BookCount, "book")
+                    }
+                    else
+                    {
+                        <span class="bw-muted">No books</span>
+                    }
+                </MudTd>
+                <MudTd Style="white-space: nowrap" @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" aria-label="@($"Edit {context.Name}")" OnClick="@(() => EditAsync(context))" />
+                    <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="@($"Delete {context.Name}")" OnClick="@(() => DeleteAsync(context))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<CollectionSummary> _collections;
+    private string _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _collections = await Api.GetCollectionsAsync();
+            _error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private void Open(CollectionSummary collection) => Navigation.NavigateTo($"collections/{collection.Id}");
+
+    private async Task EditAsync(CollectionSummary collection)
+    {
+        var parameters = new DialogParameters<CollectionDialog> { { d => d.Collection, collection } };
+        var dialog = await Dialogs.ShowAsync<CollectionDialog>(collection is null ? "Add a collection" : "Edit collection", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: CollectionDetails saved })
+        {
+            if (collection is null)
+            {
+                // A new collection is empty; go straight to it so books can be added.
+                Navigation.NavigateTo($"collections/{saved.Id}");
+                return;
+            }
+
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(CollectionSummary collection)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete this collection?",
+            $"The collection “{collection.Name}” will be deleted. Its books stay in your library.", yesText: "Delete", cancelText: "Keep");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteCollectionAsync(collection.Id);
+            Snackbar.Add($"Deleted the collection “{collection.Name}”.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+}

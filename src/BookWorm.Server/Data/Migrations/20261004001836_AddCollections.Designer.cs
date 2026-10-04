@@ -3,6 +3,7 @@ using System;
 using BookWorm.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BookWorm.Server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261004001836_AddCollections")]
+    partial class AddCollections
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1065,7 +1068,7 @@ namespace BookWorm.Server.Data.Migrations
             modelBuilder.Entity("BookWorm.Server.Data.CollectionBook", b =>
                 {
                     b.HasOne("BookWorm.Server.Data.Book", "Book")
-                        .WithMany("Collections")
+                        .WithMany()
                         .HasForeignKey("BookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
@@ -1269,8 +1272,6 @@ namespace BookWorm.Server.Data.Migrations
             modelBuilder.Entity("BookWorm.Server.Data.Book", b =>
                 {
                     b.Navigation("Authors");
-
-                    b.Navigation("Collections");
 
                     b.Navigation("Files");
 

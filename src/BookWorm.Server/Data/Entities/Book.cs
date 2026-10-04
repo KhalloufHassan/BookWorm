@@ -31,6 +31,7 @@ public sealed class Book : IAuditable
     /// <summary>The book's authors; <see cref="BookAuthor.Position"/> gives the display order.</summary>
     public List<BookAuthor> Authors { get; } = [];
     public List<Tag> Tags { get; } = [];
+    public List<CollectionBook> Collections { get; } = [];
     public List<Read> Reads { get; } = [];
     public List<BookFile> Files { get; } = [];
     public List<Highlight> Highlights { get; } = [];

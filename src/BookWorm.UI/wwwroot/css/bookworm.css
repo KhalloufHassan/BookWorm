@@ -1830,3 +1830,60 @@ div.bw-highlight__quote {
     line-height: 1.8;
 }
 
+
+/* Collections */
+
+.bw-collection-books .mud-drop-zone {
+    display: flex;
+    flex-direction: column;
+}
+
+.bw-collection-book {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    background: var(--mud-palette-surface);
+}
+
+.bw-collection-books .mud-drop-item:last-child .bw-collection-book {
+    border-bottom: none;
+}
+
+.bw-collection-book__handle {
+    cursor: grab;
+    color: var(--mud-palette-text-secondary);
+    flex: none;
+}
+
+.bw-collection-book__main {
+    flex: 1;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.bw-collection-book__main:hover .bw-strong {
+    text-decoration: underline;
+}
+
+.bw-collection-book__actions {
+    display: flex;
+    flex: none;
+}
+
+.bw-add-books {
+    max-height: 55vh;
+    overflow-y: auto;
+}
+
+@media (max-width: 599px) {
+    .bw-collection-book .mud-chip {
+        display: none;
+    }
+}
+
+.bw-book__collections {
+    align-items: center;
+}

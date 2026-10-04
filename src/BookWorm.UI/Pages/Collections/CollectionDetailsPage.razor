@@ -1,0 +1,225 @@
+@page "/collections/{Id:guid}"
+@attribute [Authorize]
+@inject BookWormApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@(_collection?.Name ?? "Collection") · BookWorm</PageTitle>
+
+<MudButton Href="collections" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" Class="mb-4">Collections</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_collection is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <section class="bw-author">
+        <MudAvatar Color="Color.Secondary" Class="bw-author__avatar"><MudIcon Icon="@Labels.IconFor(_collection.Type)" /></MudAvatar>
+        <div class="bw-author__main">
+            <MudText Typo="Typo.h3" HtmlTag="h1">@_collection.Name</MudText>
+            <div class="bw-author__facts">
+                <span>@Labels.For(_collection.Type)</span>
+                <span class="bw-muted">@Labels.Count(_books.Count, "book")</span>
+            </div>
+            <div class="bw-book__actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="AddBooksAsync">Add books</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit" OnClick="EditAsync">Edit</MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Rounded.DeleteOutline" OnClick="DeleteAsync">Delete</MudButton>
+            </div>
+        </div>
+    </section>
+
+    @if (_books.Count == 0)
+    {
+        <EmptyState Icon="@Icons.Material.Rounded.CollectionsBookmark" Title="No books in this collection yet"
+                    Text="Add books from your library, then drag them into order." />
+    }
+    else
+    {
+        @if (_books.Count > 1)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Drag books by the handle to change the order.</MudText>
+        }
+        <MudPaper Elevation="0" Class="bw-table-wrap">
+            <MudDropContainer T="BookSummary" @ref="_dropContainer" Items="_books" ItemsSelector="@((_, _) => true)" ItemDropped="DroppedAsync"
+                              Class="bw-collection-books">
+                <ChildContent>
+                    <MudDropZone T="BookSummary" Identifier="books" AllowReorder="true" />
+                </ChildContent>
+                <ItemRenderer>
+                    <div class="bw-collection-book">
+                        <MudIcon Icon="@Icons.Material.Rounded.DragIndicator" Class="bw-collection-book__handle" aria-hidden="true" />
+                        <a class="bw-title-cell bw-collection-book__main" href="@($"books/{context.Id}")" draggable="false">
+                            <BookCover Id="context.Id" Title="@context.Title" CoverVersion="context.CoverVersion" Size="tiny" />
+                            <div>
+                                <div class="bw-strong">@context.Title</div>
+                                <div class="bw-muted">@Labels.Authors(context.Authors)</div>
+                            </div>
+                        </a>
+                        <StatusChip Status="context.Status" />
+                        <div class="bw-collection-book__actions">
+                            <MudIconButton Icon="@Icons.Material.Rounded.ArrowUpward" Size="Size.Small" aria-label="@($"Move {context.Title} up")"
+                                           Disabled="@(_saving || _books.IndexOf(context) == 0)" OnClick="@(() => MoveAsync(context, -1))" />
+                            <MudIconButton Icon="@Icons.Material.Rounded.ArrowDownward" Size="Size.Small" aria-label="@($"Move {context.Title} down")"
+                                           Disabled="@(_saving || _books.IndexOf(context) == _books.Count - 1)" OnClick="@(() => MoveAsync(context, 1))" />
+                            <MudIconButton Icon="@Icons.Material.Rounded.RemoveCircleOutline" Size="Size.Small" aria-label="@($"Remove {context.Title} from the collection")"
+                                           Disabled="_saving" OnClick="@(() => RemoveAsync(context))" />
+                        </div>
+                    </div>
+                </ItemRenderer>
+            </MudDropContainer>
+        </MudPaper>
+    }
+}
+
+@code {
+    private CollectionDetails _collection;
+    /// <summary>Always the same list (changed in place), so the drop container sees changes when refreshed.</summary>
+    private readonly List<BookSummary> _books = [];
+    private MudDropContainer<BookSummary> _dropContainer;
+    private string _error;
+    private bool _saving;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            Show(await Api.GetCollectionAsync(Id));
+            _error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            _error = ApiErrorMessages.Describe(ex);
+        }
+    }
+
+    private void Show(CollectionDetails collection)
+    {
+        _collection = collection;
+        _books.Clear();
+        _books.AddRange(collection.Books);
+        _dropContainer?.Refresh();
+    }
+
+    private Task DroppedAsync(MudItemDropInfo<BookSummary> drop)
+    {
+        var from = _books.IndexOf(drop.Item);
+        if (from < 0 || from == drop.IndexInZone)
+        {
+            return Task.CompletedTask;
+        }
+
+        _books.RemoveAt(from);
+        _books.Insert(Math.Clamp(drop.IndexInZone, 0, _books.Count), drop.Item);
+        return SaveOrderAsync();
+    }
+
+    private Task MoveAsync(BookSummary book, int offset)
+    {
+        var from = _books.IndexOf(book);
+        var to = from + offset;
+        if (from < 0 || to < 0 || to >= _books.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        (_books[from], _books[to]) = (_books[to], _books[from]);
+        return SaveOrderAsync();
+    }
+
+    private async Task RemoveAsync(BookSummary book)
+    {
+        _books.Remove(book);
+        if (await SaveOrderAsync())
+        {
+            Snackbar.Add($"Removed “{book.Title}” from the collection. The book stays in your library.", Severity.Success);
+        }
+    }
+
+    private async Task AddBooksAsync()
+    {
+        var parameters = new DialogParameters<AddBooksDialog> { { d => d.ExcludedIds, _books.Select(b => b.Id).ToHashSet() } };
+        var dialog = await Dialogs.ShowAsync<AddBooksDialog>($"Add books to {_collection.Name}", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: List<Guid> added } && added.Count > 0)
+        {
+            await SaveAsync(_books.Select(b => b.Id).Concat(added));
+        }
+    }
+
+    /// <summary>Saves the order shown on screen. The list has already changed, so the page feels instant.</summary>
+    private Task<bool> SaveOrderAsync()
+    {
+        _dropContainer?.Refresh();
+        return SaveAsync(_books.Select(b => b.Id));
+    }
+
+    private async Task<bool> SaveAsync(IEnumerable<Guid> bookIds)
+    {
+        _saving = true;
+        try
+        {
+            Show(await Api.SetCollectionBooksAsync(_collection.Id, bookIds.ToList()));
+            return true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+            await LoadAsync();
+            return false;
+        }
+        finally
+        {
+            // The drop zone renders its items itself, so it has to be told the buttons are enabled again.
+            _saving = false;
+            _dropContainer?.Refresh();
+        }
+    }
+
+    private async Task EditAsync()
+    {
+        var summary = new CollectionSummary(_collection.Id, _collection.Name, _collection.Type, _books.Count,
+            _collection.CreatedAt, _collection.UpdatedAt, _collection.Version);
+        var parameters = new DialogParameters<CollectionDialog> { { d => d.Collection, summary } };
+        var dialog = await Dialogs.ShowAsync<CollectionDialog>("Edit collection", parameters, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: CollectionDetails saved })
+        {
+            Show(saved);
+            Snackbar.Add("Saved.", Severity.Success);
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete this collection?",
+            $"The collection “{_collection.Name}” will be deleted. Its books stay in your library.", yesText: "Delete", cancelText: "Keep");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteCollectionAsync(_collection.Id);
+            Snackbar.Add($"Deleted the collection “{_collection.Name}”.", Severity.Success);
+            Navigation.NavigateTo("collections");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            Snackbar.Add(ApiErrorMessages.Describe(ex), Severity.Error);
+        }
+    }
+}
