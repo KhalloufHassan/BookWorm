@@ -490,3 +490,5 @@ $RECYCLE.BIN/
 src/BookWorm.Mobile/wwwroot/lib/
 src/BookWorm.Mobile/wwwroot/shared/
 src/BookWorm.Mobile/wwwroot/favicon.svg
+src/BookWorm.Mobile/wwwroot/favicon.png
+src/BookWorm.Mobile/wwwroot/bookworm-icon.png

@@ -31,7 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.62" Color="#FBF3E6" />
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\bookworm.png" ForegroundScale="0.62" Color="#FBF3E6" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#F7F1E6" BaseSize="128,128" />
   </ItemGroup>
 
@@ -51,7 +51,7 @@
 
   <!-- The logo and the boot-screen styles are the web app's, copied in (git ignores the copies). -->
   <Target Name="CopySharedWebFiles" AfterTargets="Restore" BeforeTargets="BeforeBuild">
-    <Copy SourceFiles="..\BookWorm.Server\wwwroot\favicon.svg" DestinationFolder="wwwroot" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\BookWorm.Server\wwwroot\bookworm-icon.png;..\BookWorm.Server\wwwroot\favicon.png" DestinationFolder="wwwroot" SkipUnchangedFiles="true" />
     <Copy SourceFiles="..\BookWorm.Server\wwwroot\app.css" DestinationFolder="wwwroot\shared" SkipUnchangedFiles="true" />
   </Target>
 
