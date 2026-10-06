@@ -308,7 +308,7 @@ export class PdfReader {
         this.#searchRun++
         document.removeEventListener('selectionchange', this.#onSelectionChange)
         this.#viewer?.cleanup?.()
-        this.#pdf?.destroy()
+        this.#pdf?.loadingTask.destroy()
         this.#container?.remove()
     }
 

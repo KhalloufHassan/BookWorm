@@ -126,7 +126,7 @@ async function readPdf(file, result) {
         await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport: scaled }).promise
         result.coverKey = keep(await toJpeg(canvas))
     } finally {
-        await pdf.destroy()
+        await pdf.loadingTask.destroy()
     }
 }
 

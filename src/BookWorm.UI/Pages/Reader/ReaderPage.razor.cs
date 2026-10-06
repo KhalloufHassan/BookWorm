@@ -914,6 +914,10 @@ public sealed partial class ReaderPage
         {
             // The page is already gone.
         }
+        catch (JSException)
+        {
+            // The engine failed to clean up after itself; it's being dropped anyway.
+        }
 
         _reader = null;
     }
