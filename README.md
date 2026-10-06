@@ -39,6 +39,36 @@ restore a backup from another server.
 - **Upload size**: book files can be up to 500 MB. Change it with `Storage__MaxUploadMegabytes` in
   `compose.yaml`.
 
+### Automatic updates
+
+Every push to `main` runs the tests and, when they pass, publishes the image as
+`ghcr.io/khalloufhassan/bookworm:latest` (and `:sha-<commit>`, to go back to an earlier version).
+To have a server update itself, run that image instead of building it, and add
+[Watchtower](https://github.com/nicholas-fedor/watchtower), which checks for a new image every few
+minutes and restarts BookWorm with it. In `compose.yaml` (or a TrueNAS custom app's YAML):
+
+```yaml
+services:
+  app:
+    image: ghcr.io/khalloufhassan/bookworm:latest   # instead of image: bookworm:local and build: .
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    # …the rest as before
+
+  watchtower:
+    image: nickfedor/watchtower:latest
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"     # only update containers with the label above
+      WATCHTOWER_POLL_INTERVAL: "300"     # seconds
+      WATCHTOWER_CLEANUP: "true"          # delete the old images
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+```
+
+The database stays on its pinned `postgres:18` image. To go back to an earlier version, replace
+`latest` with one of the `sha-…` tags listed on the repository's Packages page.
+
 ### Your notes as Markdown
 
 BookWorm keeps a Markdown copy of each book's notes and highlights in `/data/notes/<username>/`
