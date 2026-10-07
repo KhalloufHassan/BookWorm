@@ -197,7 +197,7 @@ Keep the web app behaving exactly as today. Every new abstraction gets a web imp
 
 - MAUI Blazor Hybrid, `net10.0-android`.
   - Application id: `com.khallouflabs.bookworm`. **Confirm with the owner before creating the project.**
-  - Display name: "BookWorm". Icon from `src/BookWorm.Server/wwwroot/favicon.svg`, via MAUI `MauiIcon` with the SVG and a cream background.
+  - Display name: "BookWorm". Icon from `src/BookWorm.Mobile/Resources/AppIcon/bookworm.png`, via MAUI `MauiIcon` with a cream background; the splash screen (`Resources/Splash/splash.png`) is the same image.
 - The `BlazorWebView` hosts `BookWorm.UI`'s `Routes` and the same CSS (`_content/BookWorm.UI/css/bookworm.css`), plus MudBlazor.
 - `MauiProgram` registers the same UI services as `BookWorm.Client/Program.cs`, but with mobile implementations of:
   - `IPreferenceStore` (MAUI `Preferences`)

@@ -32,7 +32,7 @@
 
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\bookworm.png" ForegroundScale="0.62" Color="#FBF3E6" />
-    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#F7F1E6" BaseSize="128,128" />
+    <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#F7F1E6" BaseSize="128,128" />
   </ItemGroup>
 
   <ItemGroup>
